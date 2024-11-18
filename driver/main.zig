@@ -1,8 +1,5 @@
 const std = @import("std");
 
-const PP_COMMAND = "gcc -E -P {} -o {}";
-const ASSEMBLY_COMMAND = "gcc {} -o {}";
-
 const Stage = enum {
     lex,
     parse,
@@ -38,9 +35,8 @@ pub fn main() !void {
     if (options.stage == .full) {
         const b_file = try remove_ending(s_file);
         try run_linker(allocator, s_file, @constCast(b_file));
+        try std.fs.cwd().deleteFile(s_file);
     }
-
-    try std.fs.cwd().deleteFile(s_file);
 }
 
 fn run_preprocessor(
@@ -48,16 +44,10 @@ fn run_preprocessor(
     input_path: []u8,
     output_path: []u8,
 ) !void {
-    const args = [_][:0]u8{
-        try allocator.dupeZ(u8, "gcc"),
-        try allocator.dupeZ(u8, "-E"),
-        try allocator.dupeZ(u8, "-P"),
-        try allocator.dupeZ(u8, input_path),
-        try allocator.dupeZ(u8, "-o"),
-        try allocator.dupeZ(u8, output_path),
-    };
-    defer for (args) |arg| allocator.free(arg);
-    _ = std.process.Child.run(.{ .allocator = allocator, .argv = &args }) catch return error.PreprocessingFailed;
+    const command = try std.fmt.allocPrintZ(allocator, "gcc -E -P {s} -o {s}", .{ input_path, output_path });
+    defer allocator.free(command);
+
+    run_command(allocator, command) catch return error.CompilationFailed;
 }
 
 fn run_compiler(
@@ -66,16 +56,12 @@ fn run_compiler(
     output_path: []u8,
     stage: Stage,
 ) !void {
-    std.debug.print("{?}", .{stage});
-    const args = [_][:0]u8{
-        try allocator.dupeZ(u8, "gcc"),
-        try allocator.dupeZ(u8, "-S"),
-        try allocator.dupeZ(u8, input_path),
-        try allocator.dupeZ(u8, "-o"),
-        try allocator.dupeZ(u8, output_path),
-    };
-    defer for (args) |arg| allocator.free(arg);
-    _ = std.process.Child.run(.{ .allocator = allocator, .argv = &args }) catch return error.CompilationFailed;
+    std.debug.print("{s}\n", .{output_path});
+
+    const command = try std.fmt.allocPrintZ(allocator, "zig run ../compiler/main.zig -- {s} --{s}", .{ input_path, @tagName(stage) });
+    defer allocator.free(command);
+
+    run_command(allocator, command) catch return error.CompilationFailed;
 }
 
 fn run_linker(
@@ -83,15 +69,39 @@ fn run_linker(
     input_path: []u8,
     output_path: []u8,
 ) !void {
-    const args = [_][:0]u8{
-        try allocator.dupeZ(u8, "gcc"),
-        try allocator.dupeZ(u8, input_path),
-        try allocator.dupeZ(u8, "-o"),
-        try allocator.dupeZ(u8, output_path),
-    };
-    defer for (args) |arg| allocator.free(arg);
+    const command = try std.fmt.allocPrintZ(allocator, "gcc {s} -o {s}", .{ input_path, output_path });
+    defer allocator.free(command);
 
-    _ = std.process.Child.run(.{ .allocator = allocator, .argv = &args }) catch return error.LinkingFailed;
+    run_command(allocator, command) catch return error.LinkingFailed;
+}
+
+fn run_command(allocator: std.mem.Allocator, command: []u8) !void {
+    var args = std.ArrayList([]u8).init(allocator);
+    defer args.deinit();
+
+    var iter = std.mem.split(u8, command, " ");
+    while (iter.next()) |arg| {
+        try args.append(try allocator.dupeZ(u8, arg));
+    }
+    const args_z = try args.toOwnedSlice();
+    defer allocator.free(args_z);
+
+    const result = try std.process.Child.run(.{ .allocator = allocator, .argv = args_z });
+    defer allocator.free(result.stderr);
+    defer allocator.free(result.stdout);
+
+    switch (result.term) {
+        .Exited => |code| {
+            if (code == 0) {
+                std.debug.print("{s}", .{result.stdout});
+            } else {
+                std.debug.print("{s}", .{result.stdout});
+                std.debug.print("{s}", .{result.stderr});
+                return error.NonZeroExit;
+            }
+        },
+        else => return error.NonZeroExit,
+    }
 }
 
 fn parse_options(opts: []const [:0]u8) !Options {
