@@ -76,7 +76,7 @@ fn run_linker(
 }
 
 fn run_command(allocator: std.mem.Allocator, command: []u8) !void {
-    var args = std.ArrayList([]u8).init(allocator);
+    var args = std.ArrayList([:0]u8).init(allocator);
     defer args.deinit();
 
     var iter = std.mem.split(u8, command, " ");
@@ -84,7 +84,9 @@ fn run_command(allocator: std.mem.Allocator, command: []u8) !void {
         try args.append(try allocator.dupeZ(u8, arg));
     }
     const args_z = try args.toOwnedSlice();
+
     defer allocator.free(args_z);
+    defer for (args_z) |arg| allocator.free(arg);
 
     const result = try std.process.Child.run(.{ .allocator = allocator, .argv = args_z });
     defer allocator.free(result.stderr);
@@ -94,6 +96,8 @@ fn run_command(allocator: std.mem.Allocator, command: []u8) !void {
         .Exited => |code| {
             if (code == 0) {
                 std.debug.print("{s}", .{result.stdout});
+
+                std.debug.print("{s}", .{result.stderr});
             } else {
                 std.debug.print("{s}", .{result.stdout});
                 std.debug.print("{s}", .{result.stderr});
