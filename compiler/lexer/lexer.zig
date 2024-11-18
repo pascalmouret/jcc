@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const TokenType = enum {
+pub const TokenType = enum {
     identifier,
     constant,
     open_parenthesis,
@@ -21,7 +21,7 @@ const ConstantToken = struct {
     constant: []u8,
 };
 
-const Token = union(TokenType) {
+pub const Token = union(TokenType) {
     identifier: IdentifierToken,
     constant: ConstantToken,
     open_parenthesis: TokenType,
