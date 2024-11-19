@@ -92,19 +92,18 @@ fn run_command(allocator: std.mem.Allocator, command: []u8) !void {
     defer allocator.free(result.stderr);
     defer allocator.free(result.stdout);
 
+    try std.io.getStdOut().writeAll(result.stdout);
+    try std.io.getStdErr().writeAll(result.stderr);
+
     switch (result.term) {
         .Exited => |code| {
-            if (code == 0) {
-                std.debug.print("{s}", .{result.stdout});
-
-                std.debug.print("{s}", .{result.stderr});
-            } else {
-                std.debug.print("{s}", .{result.stdout});
-                std.debug.print("{s}", .{result.stderr});
+            if (code != 0) {
                 return error.NonZeroExit;
             }
         },
-        else => return error.NonZeroExit,
+        else => {
+            return error.NotExited;
+        },
     }
 }
 
