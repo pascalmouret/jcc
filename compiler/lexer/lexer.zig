@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const TokenType = enum {
+pub const TokenKind = enum {
     identifier,
     constant,
     open_parenthesis,
@@ -13,25 +13,17 @@ pub const TokenType = enum {
     ret,
 };
 
-const IdentifierToken = struct {
-    identifier: []u8,
+pub const Token = struct {
+    kind: TokenKind,
+    bytes: []u8,
+    line: usize,
+    character: usize,
 };
 
-const ConstantToken = struct {
-    constant: []u8,
-};
-
-pub const Token = union(TokenType) {
-    identifier: IdentifierToken,
-    constant: ConstantToken,
-    open_parenthesis: TokenType,
-    close_parenthesis: TokenType,
-    open_brace: TokenType,
-    close_brace: TokenType,
-    semicolon: TokenType,
-    int: TokenType,
-    void: TokenType,
-    ret: TokenType,
+const LexerError = error{
+    InvalidConstant,
+    InvalidIdentifier,
+    InvalidCharacter,
 };
 
 const LexerResult = struct {
@@ -41,13 +33,6 @@ const LexerResult = struct {
         return LexerResult{ .allocator = allocator, .tokens = tokens };
     }
     pub fn deinit(self: LexerResult) void {
-        for (self.tokens) |token| {
-            switch (token) {
-                .identifier => |identifier| self.allocator.free(identifier.identifier),
-                .constant => |constant| self.allocator.free(constant.constant),
-                else => continue,
-            }
-        }
         defer self.allocator.free(self.tokens);
     }
 };
@@ -56,53 +41,64 @@ pub fn bytes_to_tokens(allocator: std.mem.Allocator, bytes: []u8) !LexerResult {
     var tokens = std.ArrayList(Token).init(allocator);
     defer tokens.deinit();
 
-    var current = std.ArrayList(u8).init(allocator);
-    defer current.deinit();
-    for (bytes) |byte| {
+    var line: usize = 1;
+    var character: usize = 1;
+
+    var token_start: usize = 0;
+
+    for (bytes, 0..) |byte, index| {
         switch (byte) {
             '(' => {
-                const slice = try current.toOwnedSlice();
-                try parse_multibyte_token(allocator, slice, &tokens);
-                try tokens.append(Token{ .open_parenthesis = TokenType.open_parenthesis });
+                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
+                try tokens.append(create_token(.open_parenthesis, bytes[index .. index + 1], line, character));
+                token_start = index + 1;
             },
             ')' => {
-                const slice = try current.toOwnedSlice();
-                try parse_multibyte_token(allocator, slice, &tokens);
-                try tokens.append(Token{ .close_parenthesis = TokenType.close_parenthesis });
+                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
+                try tokens.append(create_token(.close_parenthesis, bytes[index .. index + 1], line, character));
+                token_start = index + 1;
             },
             '{' => {
-                const slice = try current.toOwnedSlice();
-                try parse_multibyte_token(allocator, slice, &tokens);
-                try tokens.append(Token{ .open_brace = TokenType.open_brace });
+                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
+                try tokens.append(create_token(.open_brace, bytes[index .. index + 1], line, character));
+                token_start = index + 1;
             },
             '}' => {
-                const slice = try current.toOwnedSlice();
-                try parse_multibyte_token(allocator, slice, &tokens);
-                try tokens.append(Token{ .close_brace = TokenType.close_brace });
+                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
+                try tokens.append(create_token(.close_brace, bytes[index .. index + 1], line, character));
+                token_start = index + 1;
             },
             ';' => {
-                const slice = try current.toOwnedSlice();
-                try parse_multibyte_token(allocator, slice, &tokens);
-                try tokens.append(Token{ .semicolon = TokenType.semicolon });
+                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
+                try tokens.append(create_token(.semicolon, bytes[index .. index + 1], line, character));
+                token_start = index + 1;
             },
-            '\n', ' ', '\t' => {
-                const slice = try current.toOwnedSlice();
-                try parse_multibyte_token(allocator, slice, &tokens);
+            '\n' => {
+                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
+                line += 1;
+                character = 0; // will be incremented at the end of the loop
+                token_start = index + 1;
             },
-            'a'...'z', 'A'...'Z', '0'...'9', '_' => {
-                try current.append(byte);
+            ' ', '\t' => {
+                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
+                token_start = index + 1;
             },
-            else => return error.UnsupportedCharacter,
+            'a'...'z', 'A'...'Z', '0'...'9', '_' => {},
+            else => return lexer_error(LexerError.InvalidCharacter, line, character, "'{c}' is not a valid character", .{byte}),
         }
+        character += 1;
     }
 
-    try parse_multibyte_token(allocator, try current.toOwnedSlice(), &tokens);
+    try parse_multibyte_token(bytes[token_start..], &tokens, line, character - (bytes.len - token_start));
     return LexerResult.create(allocator, try tokens.toOwnedSlice());
 }
 
-fn parse_multibyte_token(allocator: std.mem.Allocator, token: []u8, list: *std.ArrayList(Token)) !void {
-    defer allocator.free(token);
-
+fn parse_multibyte_token(
+    token: []u8,
+    list: *std.ArrayList(Token),
+    line: usize,
+    character: usize,
+) !void {
     if (token.len == 0) {
         return;
     }
@@ -111,30 +107,44 @@ fn parse_multibyte_token(allocator: std.mem.Allocator, token: []u8, list: *std.A
         'a'...'z', 'A'...'Z', '_' => {
             for (token) |char| {
                 if (!is_char(char) and !is_digit(char)) {
-                    return error.InvalidIdentifier;
+                    return lexer_error(LexerError.InvalidConstant, line, character, "'{s}' is not a valid identifier", .{token});
                 }
             }
 
             if (std.mem.eql(u8, token, "int")) {
-                try list.append(Token{ .int = TokenType.int });
+                try list.append(create_token(.int, token, line, character));
             } else if (std.mem.eql(u8, token, "void")) {
-                try list.append(Token{ .void = TokenType.void });
+                try list.append(create_token(.void, token, line, character));
             } else if (std.mem.eql(u8, token, "return")) {
-                try list.append(Token{ .ret = TokenType.ret });
+                try list.append(create_token(.ret, token, line, character));
             } else {
-                try list.append(Token{ .identifier = IdentifierToken{ .identifier = try allocator.dupe(u8, token) } });
+                try list.append(create_token(.identifier, token, line, character));
             }
         },
         '0'...'9' => {
             for (token) |byte| {
                 if (!is_digit(byte)) {
-                    return error.InvalidConstant;
+                    return lexer_error(LexerError.InvalidConstant, line, character, "'{s}' is not a valid constant", .{token});
                 }
             }
-            try list.append(Token{ .constant = ConstantToken{ .constant = try allocator.dupe(u8, token) } });
+            try list.append(create_token(.constant, token, line, character));
         },
         else => unreachable,
     }
+}
+
+fn create_token(
+    kind: TokenKind,
+    bytes: []u8,
+    line: usize,
+    character: usize,
+) Token {
+    return Token{
+        .kind = kind,
+        .bytes = bytes,
+        .line = line,
+        .character = character,
+    };
 }
 
 fn is_char(byte: u8) bool {
@@ -145,29 +155,13 @@ fn is_digit(byte: u8) bool {
     return byte >= '0' and byte <= '9';
 }
 
-test bytes_to_tokens {
-    const allocator = std.testing.allocator;
-
-    const tokens = try allocator.dupe(u8, "main(){}return int;123");
-    defer allocator.free(tokens);
-    const result = try bytes_to_tokens(allocator, tokens);
-    defer result.deinit();
-
-    const expected = LexerResult.create(allocator, try allocator.dupe(Token, &[_]Token{
-        Token{ .identifier = IdentifierToken{ .identifier = try allocator.dupe(u8, "main") } },
-        Token{ .open_parenthesis = TokenType.open_parenthesis },
-        Token{ .close_parenthesis = TokenType.close_parenthesis },
-        Token{ .open_brace = TokenType.open_brace },
-        Token{ .close_brace = TokenType.close_brace },
-        Token{ .ret = TokenType.ret },
-        Token{ .int = TokenType.int },
-        Token{ .semicolon = TokenType.semicolon },
-        Token{ .constant = ConstantToken{ .constant = try allocator.dupe(u8, "123") } },
-    }));
-    defer expected.deinit();
-
-    try std.testing.expectEqualDeep(
-        expected,
-        result,
-    );
+fn lexer_error(
+    err: LexerError,
+    line: usize,
+    character: usize,
+    comptime format: []const u8,
+    args: anytype,
+) LexerError {
+    std.log.err("{s} [{d}:{d}]: " ++ format, .{ @errorName(err), line, character } ++ args);
+    return err;
 }

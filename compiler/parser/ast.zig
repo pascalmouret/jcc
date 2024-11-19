@@ -2,13 +2,14 @@ const std = @import("std");
 
 const lexer = @import("../lexer/lexer.zig");
 const Token = lexer.Token;
-const TokenType = lexer.TokenType;
+const TokenKind = lexer.TokenKind;
 
-const AstNode = enum {
-    program,
-    function,
-    ret,
-    constant,
+const ParserError = error{
+    UnexpectedToken,
+    UnexpectedEOF,
+    ExpectedExpression,
+    ExpectedStatement,
+    InvalidConstant,
 };
 
 const TokenIterator = struct {
@@ -39,10 +40,21 @@ const TokenIterator = struct {
         }
     }
 
-    pub fn consumeA(self: *TokenIterator, kind: TokenType) !void {
-        if (try self.next() != kind) {
-            return error.UnexpectedToken;
+    pub fn peekKind(self: TokenIterator) !TokenKind {
+        return (try self.peek()).kind;
+    }
+
+    pub fn getA(self: *TokenIterator, kind: TokenKind) !Token {
+        const next_token = try self.next();
+        if (next_token.kind != kind) {
+            return unexpected_token(next_token, kind);
+        } else {
+            return next_token;
         }
+    }
+
+    pub fn consumeA(self: *TokenIterator, kind: TokenKind) !void {
+        _ = try self.getA(kind);
     }
 };
 
@@ -80,19 +92,27 @@ const Function = struct {
 const Identifier = struct {
     name: []u8,
     pub fn parse(tokens: *TokenIterator) !Identifier {
-        switch (try tokens.next()) {
-            .identifier => |id| return Identifier{ .name = id.identifier },
-            else => return error.ExpectedIdentifier,
-        }
+        return Identifier{
+            .name = (try tokens.getA(.identifier)).bytes,
+        };
     }
 };
 
 const Statement = union(enum) {
     ret: Ret,
     pub fn parse(tokens: *TokenIterator) !Statement {
-        switch (try tokens.peek()) {
+        switch (try tokens.peekKind()) {
             .ret => return Statement{ .ret = try Ret.parse(tokens) },
-            else => return error.ExpectedStatement,
+            else => {
+                const token = try tokens.next();
+                return parser_error(
+                    ParserError.ExpectedStatement,
+                    token.line,
+                    token.character,
+                    "Expected statement, found '{s}'",
+                    .{token.bytes},
+                );
+            },
         }
     }
 };
@@ -110,9 +130,18 @@ const Ret = struct {
 const Expression = union(enum) {
     constant: Constant,
     pub fn parse(tokens: *TokenIterator) !Expression {
-        switch (try tokens.peek()) {
+        switch (try tokens.peekKind()) {
             .constant => return Expression{ .constant = try Constant.parse(tokens) },
-            else => return error.ExpectedExpression,
+            else => {
+                const token = try tokens.next();
+                return parser_error(
+                    ParserError.ExpectedExpression,
+                    token.line,
+                    token.character,
+                    "Expected expression, found '{s}'",
+                    .{token.bytes},
+                );
+            },
         }
     }
 };
@@ -120,11 +149,28 @@ const Expression = union(enum) {
 const Constant = struct {
     value: isize,
     pub fn parse(tokens: *TokenIterator) !Constant {
-        switch (try tokens.next()) {
-            .constant => |constant| {
-                return Constant{ .value = std.fmt.parseInt(isize, constant.constant, 10) catch return error.InvalidInt };
-            },
-            else => return error.UnexpectedToken,
-        }
+        const constant = try tokens.getA(.constant);
+        const as_int = std.fmt.parseInt(isize, constant.bytes, 10) catch {
+            return parser_error(ParserError.InvalidConstant, constant.line, constant.character, "'{s}' is not a valid constant", .{constant.bytes});
+        };
+        return Constant{ .value = as_int };
     }
 };
+
+fn parser_error(
+    err: ParserError,
+    line: usize,
+    character: usize,
+    comptime format: []const u8,
+    args: anytype,
+) ParserError {
+    std.log.err("{s} [{d}:{d}]: " ++ format, .{ @errorName(err), line, character } ++ args);
+    return err;
+}
+
+fn unexpected_token(
+    actual: Token,
+    expected: TokenKind,
+) ParserError {
+    return parser_error(ParserError.UnexpectedToken, actual.line, actual.character, "Expected a '{s}', found '{s}'", .{ @tagName(expected), actual.bytes });
+}
