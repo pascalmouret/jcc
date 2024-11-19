@@ -1,6 +1,7 @@
 const std = @import("std");
 const lex = @import("./lexer.zig").lexer;
 const ast = @import("./parser.zig").ast;
+const x86 = @import("./codegen.zig").x86;
 
 const Options = struct {
     file: []u8,
@@ -10,6 +11,7 @@ const Options = struct {
 const Stage = enum {
     lex,
     parse,
+    codegen,
     full,
 };
 
@@ -34,9 +36,13 @@ pub fn main() !void {
 
     if (options.stage == .lex) return;
 
-    _ = try ast.tokens_to_program(lex_result.tokens);
+    const program = try ast.tokens_to_program(lex_result.tokens);
 
     if (options.stage == .parse) return;
+
+    _ = x86.program_to_x86(program);
+
+    if (options.stage == .codegen) return;
 }
 
 fn parse_options(opts: []const [:0]u8) !Options {

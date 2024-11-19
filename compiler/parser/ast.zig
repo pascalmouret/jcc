@@ -63,7 +63,7 @@ pub fn tokens_to_program(tokens: []Token) !Program {
     return try Program.parse(&iterator);
 }
 
-const Program = struct {
+pub const Program = struct {
     function: Function,
     pub fn parse(tokens: *TokenIterator) !Program {
         const program = Program{ .function = try Function.parse(tokens) };
@@ -72,7 +72,7 @@ const Program = struct {
     }
 };
 
-const Function = struct {
+pub const Function = struct {
     name: Identifier,
     body: Statement,
     pub fn parse(tokens: *TokenIterator) !Function {
@@ -98,7 +98,7 @@ const Identifier = struct {
     }
 };
 
-const Statement = union(enum) {
+pub const Statement = union(enum) {
     ret: Ret,
     pub fn parse(tokens: *TokenIterator) !Statement {
         switch (try tokens.peekKind()) {
