@@ -3,6 +3,7 @@ const std = @import("std");
 const Stage = enum {
     lex,
     parse,
+    tacky,
     codegen,
     full,
 };

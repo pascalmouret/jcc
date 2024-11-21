@@ -157,7 +157,7 @@ const Ret = struct {
     }
 };
 
-const Expression = union(enum) {
+pub const Expression = union(enum) {
     constant: Constant,
     unary: Unary,
     pub fn parse(allocator: std.mem.Allocator, tokens: *TokenIterator) (ParserError || error{OutOfMemory})!*Expression {
@@ -213,12 +213,12 @@ const Constant = struct {
 };
 
 const Unary = struct {
-    operator: enum { negate, complemment },
+    operator: enum { negate, complement },
     expression: *Expression,
     pub fn parse(allocator: std.mem.Allocator, tokens: *TokenIterator) !Unary {
         switch (try tokens.consumeOneOf(&.{ .hyphen, .tilde })) {
             .hyphen => return Unary{ .operator = .negate, .expression = try Expression.parse(allocator, tokens) },
-            .tilde => return Unary{ .operator = .complemment, .expression = try Expression.parse(allocator, tokens) },
+            .tilde => return Unary{ .operator = .complement, .expression = try Expression.parse(allocator, tokens) },
             else => unreachable,
         }
     }
