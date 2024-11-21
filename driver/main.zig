@@ -35,8 +35,9 @@ pub fn main() !void {
     if (options.stage == .full) {
         const b_file = try remove_ending(s_file);
         try run_linker(allocator, s_file, @constCast(b_file));
-        try std.fs.cwd().deleteFile(s_file);
     }
+
+    try std.fs.cwd().deleteFile(s_file);
 }
 
 fn run_preprocessor(
@@ -56,9 +57,7 @@ fn run_compiler(
     output_path: []u8,
     stage: Stage,
 ) !void {
-    std.debug.print("{s}\n", .{output_path});
-
-    const command = try std.fmt.allocPrintZ(allocator, "zig run ../compiler/main.zig -- {s} --{s}", .{ input_path, @tagName(stage) });
+    const command = try std.fmt.allocPrintZ(allocator, "zig run ../compiler/main.zig -- {s} --{s} -o {s}", .{ input_path, @tagName(stage), output_path });
     defer allocator.free(command);
 
     run_command(allocator, command) catch return error.CompilationFailed;
