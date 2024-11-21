@@ -37,7 +37,8 @@ pub fn main() !void {
 
     if (options.stage == .lex) return;
 
-    const program = try ast.tokens_to_program(lex_result.tokens);
+    const program = try ast.tokens_to_program(allocator, lex_result.tokens);
+    defer program.deinit();
 
     if (options.stage == .parse) return;
 
