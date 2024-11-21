@@ -35,9 +35,8 @@ pub fn main() !void {
     if (options.stage == .full) {
         const b_file = try remove_ending(s_file);
         try run_linker(allocator, s_file, @constCast(b_file));
+        try std.fs.cwd().deleteFile(s_file);
     }
-
-    try std.fs.cwd().deleteFile(s_file);
 }
 
 fn run_preprocessor(

@@ -11,6 +11,9 @@ pub const TokenKind = enum {
     int,
     void,
     ret,
+    tilde,
+    hyphen,
+    negate,
 };
 
 pub const Token = struct {
@@ -44,9 +47,12 @@ pub fn bytes_to_tokens(allocator: std.mem.Allocator, bytes: []u8) !LexerResult {
     var line: usize = 1;
     var character: usize = 1;
 
+    var index: usize = 0;
     var token_start: usize = 0;
 
-    for (bytes, 0..) |byte, index| {
+    while (index < bytes.len) : (index += 1) {
+        const byte = bytes[index];
+
         switch (byte) {
             '(' => {
                 try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
@@ -71,6 +77,23 @@ pub fn bytes_to_tokens(allocator: std.mem.Allocator, bytes: []u8) !LexerResult {
             ';' => {
                 try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
                 try tokens.append(create_token(.semicolon, bytes[index .. index + 1], line, character));
+                token_start = index + 1;
+            },
+            '~' => {
+                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
+                try tokens.append(create_token(.tilde, bytes[index .. index + 1], line, character));
+                token_start = index + 1;
+            },
+            '-' => {
+                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
+
+                if (bytes[index + 1] == '-') {
+                    try tokens.append(create_token(.negate, bytes[index .. index + 1], line, character));
+                    index += 1;
+                } else {
+                    try tokens.append(create_token(.hyphen, bytes[index .. index + 1], line, character));
+                }
+
                 token_start = index + 1;
             },
             '\n' => {
