@@ -1,22 +1,13 @@
 const std = @import("std");
+
+const parse_options = @import("./cli/options.zig").parse_options;
+
 const lex = @import("./lexer.zig").lexer;
 const ast = @import("./parser.zig").ast;
+const ast_print = @import("./parser.zig").print_program;
 const x86 = @import("./codegen.zig").x86;
 const tacky = @import("./tacky.zig").tacky;
-
-const Options = struct {
-    input_file: []u8,
-    output_file: []u8,
-    stage: Stage,
-};
-
-const Stage = enum {
-    lex,
-    parse,
-    tacky,
-    codegen,
-    full,
-};
+const tacky_print = @import("./tacky.zig").print_program;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -50,10 +41,18 @@ pub fn run_compiler(allocator: std.mem.Allocator) !void {
     const ast_program = try ast.tokens_to_program(allocator, lex_result.tokens);
     defer ast_program.deinit();
 
+    if (options.print_ast) {
+        try ast_print(ast_program, std.io.getStdOut().writer());
+    }
+
     if (options.stage == .parse) return;
 
     const tacky_program = try tacky.program_to_tacky(allocator, ast_program);
     defer tacky_program.deinit();
+
+    if (options.print_tacky) {
+        try tacky_print(tacky_program, std.io.getStdOut().writer());
+    }
 
     if (options.stage == .tacky) return;
 
@@ -66,34 +65,4 @@ pub fn run_compiler(allocator: std.mem.Allocator) !void {
     // defer output_file.close();
     //
     // try x86_ast.write(output_file.writer());
-}
-
-fn parse_options(opts: []const [:0]u8) !Options {
-    var file: ?[:0]const u8 = null;
-    var stage: Stage = .full;
-    var output_file: ?[:0]const u8 = null;
-
-    var index: usize = 1;
-    while (index < opts.len) : (index += 1) {
-        const opt = opts[index];
-
-        if (opt.len == 2 and std.mem.eql(u8, opt[0..2], "-o")) {
-            index += 1;
-            output_file = opts[index];
-        } else if (opt.len >= 2 and std.mem.eql(u8, opt[0..2], "--")) {
-            stage = std.meta.stringToEnum(Stage, opt[2..]) orelse return error.UnknownArgument;
-        } else {
-            file = opt;
-        }
-    }
-
-    if (file) |path| {
-        return Options{
-            .input_file = @constCast(path),
-            .output_file = @constCast(output_file orelse return error.MissingOutputPath),
-            .stage = stage,
-        };
-    } else {
-        return error.MissingFilePath;
-    }
 }

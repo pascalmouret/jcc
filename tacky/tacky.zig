@@ -7,7 +7,7 @@ pub fn program_to_tacky(allocator: Allocator, program: ast.Program) !Program {
     return Program.from_program(allocator, program);
 }
 
-const Program = struct {
+pub const Program = struct {
     allocator: Allocator,
     function_definition: FunctionDefinition,
     pub fn from_program(allocator: Allocator, program: ast.Program) !Program {
@@ -18,7 +18,7 @@ const Program = struct {
     }
 };
 
-const FunctionDefinition = struct {
+pub const FunctionDefinition = struct {
     name: []u8,
     instructions: []Instruction,
     pub fn from_function(allocator: Allocator, function: ast.Function) !FunctionDefinition {
@@ -30,7 +30,7 @@ const FunctionDefinition = struct {
     }
 };
 
-const Instruction = union(enum) {
+pub const Instruction = union(enum) {
     unary: Unary,
     ret: Ret,
     pub fn from_statement(allocator: Allocator, statement: ast.Statement) ![]Instruction {
@@ -71,7 +71,6 @@ const Instruction = union(enum) {
 const Ret = struct {
     val: Val,
     pub fn deinit(self: Ret, allocator: Allocator) void {
-        std.debug.print("Ret\n", .{});
         self.val.deinit(allocator);
     }
 };
@@ -85,7 +84,7 @@ const Unary = struct {
     }
 };
 
-const Val = union(enum) {
+pub const Val = union(enum) {
     constant: Constant,
     tmp: Tmp,
     pub fn deinit(self: Val, allocator: Allocator) void {

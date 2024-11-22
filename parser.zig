@@ -1,4 +1,5 @@
 pub const ast = @import("./parser/ast.zig");
+pub const print_program = @import("./parser/printer.zig").print_program;
 
 test "ast.tokens_to_program" {
     const std = @import("std");

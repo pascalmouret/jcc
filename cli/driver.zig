@@ -1,17 +1,6 @@
 const std = @import("std");
-
-const Stage = enum {
-    lex,
-    parse,
-    tacky,
-    codegen,
-    full,
-};
-
-const Options = struct {
-    file: []u8,
-    stage: Stage,
-};
+const parse_options = @import("./options.zig").parse_options;
+const Stage = @import("./options.zig").Stage;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -23,27 +12,29 @@ pub fn main() !void {
 
     const options = try parse_options(args);
 
-    const i_file = try replace_ending(allocator, options.file, "i");
+    const i_file = try replace_ending(allocator, options.input_file, "i");
     defer allocator.free(i_file);
-    try run_preprocessor(allocator, options.file, i_file);
+    try run_preprocessor(allocator, options.input_file, i_file);
 
     const s_file = try replace_ending(allocator, i_file, "s");
     defer allocator.free(s_file);
-    try run_compiler(allocator, i_file, s_file, options.stage);
+    try run_compiler(allocator, i_file, s_file, options.stage, options.print_ast, options.print_tacky);
 
     try std.fs.cwd().deleteFile(i_file);
 
     if (options.stage == .full) {
-        const b_file = try remove_ending(s_file);
+        const b_file = options.output_file orelse try remove_ending(s_file);
         try run_linker(allocator, s_file, @constCast(b_file));
-        try std.fs.cwd().deleteFile(s_file);
+        if (options.preserve_asm) {
+            try std.fs.cwd().deleteFile(s_file);
+        }
     }
 }
 
 fn run_preprocessor(
     allocator: std.mem.Allocator,
-    input_path: []u8,
-    output_path: []u8,
+    input_path: []const u8,
+    output_path: []const u8,
 ) !void {
     const command = try std.fmt.allocPrintZ(allocator, "gcc -E -P {s} -o {s}", .{ input_path, output_path });
     defer allocator.free(command);
@@ -51,13 +42,33 @@ fn run_preprocessor(
     run_command(allocator, command) catch return error.CompilationFailed;
 }
 
+// TODO: clean this mess up
 fn run_compiler(
     allocator: std.mem.Allocator,
-    input_path: []u8,
-    output_path: []u8,
+    input_path: []const u8,
+    output_path: []const u8,
     stage: Stage,
+    print_ast: bool,
+    print_tacky: bool,
 ) !void {
-    const command = try std.fmt.allocPrintZ(allocator, "zig run ../compiler/main.zig -- {s} --{s} -o {s}", .{ input_path, @tagName(stage), output_path });
+    var flags = std.ArrayList(u8).init(allocator);
+    defer flags.deinit();
+
+    if (print_ast) {
+        try flags.appendSlice("--print-ast");
+    }
+
+    if (print_tacky) {
+        if (flags.items.len > 0) {
+            try flags.appendSlice(" ");
+        }
+        try flags.appendSlice("--print-tacky");
+    }
+
+    const flags_bfr = try flags.toOwnedSlice();
+    defer allocator.free(flags_bfr);
+
+    const command = try std.fmt.allocPrintZ(allocator, "zig run ../main.zig -- {s} --{s} -o {s} {s}", .{ input_path, @tagName(stage), output_path, flags_bfr });
     defer allocator.free(command);
 
     run_command(allocator, command) catch return error.CompilationFailed;
@@ -65,8 +76,8 @@ fn run_compiler(
 
 fn run_linker(
     allocator: std.mem.Allocator,
-    input_path: []u8,
-    output_path: []u8,
+    input_path: []const u8,
+    output_path: []const u8,
 ) !void {
     const command = try std.fmt.allocPrintZ(allocator, "gcc {s} -o {s}", .{ input_path, output_path });
     defer allocator.free(command);
@@ -103,25 +114,6 @@ fn run_command(allocator: std.mem.Allocator, command: []u8) !void {
         else => {
             return error.NotExited;
         },
-    }
-}
-
-fn parse_options(opts: []const [:0]u8) !Options {
-    var file: ?[:0]const u8 = null;
-    var stage: Stage = .full;
-
-    for (opts[1..]) |opt| {
-        if (opt.len >= 2 and std.mem.eql(u8, opt[0..2], "--")) {
-            stage = std.meta.stringToEnum(Stage, opt[2..]) orelse return error.UnknownArgument;
-        } else {
-            file = opt;
-        }
-    }
-
-    if (file) |path| {
-        return Options{ .file = @constCast(path), .stage = stage };
-    } else {
-        return error.MissingFilePath;
     }
 }
 
@@ -191,40 +183,5 @@ test replace_ending {
     try std.testing.expectError(
         error.NoFileEnding,
         result5,
-    );
-}
-
-test parse_options {
-    const allocator = std.testing.allocator;
-
-    const opts1 = [_][:0]u8{
-        try allocator.dupeZ(u8, "./driver"),
-        try allocator.dupeZ(u8, "../test.c"),
-        try allocator.dupeZ(u8, "--lex"),
-    };
-    defer for (opts1) |opt| allocator.free(opt);
-    try std.testing.expectEqualDeep(
-        Options{ .file = "../test.c", .stage = .lex },
-        try parse_options(&opts1),
-    );
-
-    const opts2 = [_][:0]u8{
-        try allocator.dupeZ(u8, "./driver"),
-        try allocator.dupeZ(u8, "../test.c"),
-    };
-    defer for (opts2) |opt| allocator.free(opt);
-    try std.testing.expectEqualDeep(
-        Options{ .file = "../test.c", .stage = .full },
-        try parse_options(&opts2),
-    );
-
-    const opts3 = [_][:0]u8{
-        try allocator.dupeZ(u8, "./driver"),
-        try allocator.dupeZ(u8, "--parse"),
-    };
-    defer for (opts3) |opt| allocator.free(opt);
-    try std.testing.expectError(
-        error.MissingFilePath,
-        parse_options(&opts3),
     );
 }
