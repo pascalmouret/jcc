@@ -2,4 +2,6 @@
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 cd $SCRIPT_DIR
-zig run $SCRIPT_DIR/driver.zig -- "$@"
+zig build
+
+./zig-out/bin/jcc-driver $@

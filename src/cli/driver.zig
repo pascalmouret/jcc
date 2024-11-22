@@ -12,6 +12,8 @@ pub fn main() !void {
 
     const options = try parse_options(args);
 
+    std.debug.print("{?}\n", .{options});
+
     const i_file = try replace_ending(allocator, options.input_file, "i");
     defer allocator.free(i_file);
     try run_preprocessor(allocator, options.input_file, i_file);
@@ -68,7 +70,7 @@ fn run_compiler(
     const flags_bfr = try flags.toOwnedSlice();
     defer allocator.free(flags_bfr);
 
-    const command = try std.fmt.allocPrintZ(allocator, "zig run ../main.zig -- {s} --{s} -o {s} {s}", .{ input_path, @tagName(stage), output_path, flags_bfr });
+    const command = try std.fmt.allocPrintZ(allocator, "./zig-out/bin/jcc {s} --{s} -o {s} {s}", .{ input_path, @tagName(stage), output_path, flags_bfr });
     defer allocator.free(command);
 
     run_command(allocator, command) catch return error.CompilationFailed;

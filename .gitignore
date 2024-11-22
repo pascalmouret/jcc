@@ -1,2 +1,4 @@
 /test-code
 .DS_STORE
+/zig-out
+.zig-cache
