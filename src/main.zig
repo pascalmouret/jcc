@@ -6,6 +6,7 @@ const lex = @import("./lexer.zig").lexer;
 const ast = @import("./parser.zig").ast;
 const ast_print = @import("./parser.zig").print_program;
 const x86 = @import("./codegen.zig").x86;
+const emit_x86_program = @import("codegen.zig").emit_x86_program;
 const tacky = @import("./tacky.zig").tacky;
 const tacky_print = @import("./tacky.zig").print_program;
 
@@ -56,16 +57,16 @@ pub fn run_compiler(allocator: std.mem.Allocator) !void {
 
     if (options.stage == .tacky) return;
 
-    const x86_ast = try x86.program_to_x86(allocator, tacky_program);
-    defer x86_ast.deinit();
+    const x86_program = try x86.program_to_x86(allocator, tacky_program);
+    defer x86_program.deinit();
 
     if (options.stage == .codegen) {
-        try x86_ast.write(std.io.getStdErr().writer());
+        try emit_x86_program(x86_program, std.io.getStdErr().writer());
         return;
     }
 
     const output_file = try std.fs.cwd().createFile(options.output_file.?, .{});
     defer output_file.close();
 
-    try x86_ast.write(output_file.writer());
+    try emit_x86_program(x86_program, output_file.writer());
 }
