@@ -12,8 +12,6 @@ pub fn main() !void {
 
     const options = try parse_options(args);
 
-    std.debug.print("{?}\n", .{options});
-
     const i_file = try replace_ending(allocator, options.input_file, "i");
     defer allocator.free(i_file);
     try run_preprocessor(allocator, options.input_file, i_file);
@@ -27,7 +25,7 @@ pub fn main() !void {
     if (options.stage == .full) {
         const b_file = options.output_file orelse try remove_ending(s_file);
         try run_linker(allocator, s_file, @constCast(b_file));
-        if (options.preserve_asm) {
+        if (!options.preserve_asm) {
             try std.fs.cwd().deleteFile(s_file);
         }
     }
@@ -41,7 +39,7 @@ fn run_preprocessor(
     const command = try std.fmt.allocPrintZ(allocator, "gcc -E -P {s} -o {s}", .{ input_path, output_path });
     defer allocator.free(command);
 
-    run_command(allocator, command) catch return error.CompilationFailed;
+    run_command(allocator, command) catch return error.PreprocessingFailed;
 }
 
 // TODO: clean this mess up
