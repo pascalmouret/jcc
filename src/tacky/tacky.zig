@@ -75,7 +75,7 @@ const Ret = struct {
     }
 };
 
-const Unary = struct {
+pub const Unary = struct {
     operator: enum { complement, negate },
     src: Val,
     dst: Tmp,

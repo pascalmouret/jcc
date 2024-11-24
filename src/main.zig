@@ -56,13 +56,16 @@ pub fn run_compiler(allocator: std.mem.Allocator) !void {
 
     if (options.stage == .tacky) return;
 
-    // const x86_ast = try x86.program_to_x86(allocator, program);
-    // defer x86_ast.deinit();
-    //
-    // if (options.stage == .codegen) return;
-    //
-    // const output_file = try std.fs.cwd().createFile(options.output_file, .{});
-    // defer output_file.close();
-    //
-    // try x86_ast.write(output_file.writer());
+    const x86_ast = try x86.program_to_x86(allocator, tacky_program);
+    defer x86_ast.deinit();
+
+    if (options.stage == .codegen) {
+        try x86_ast.write(std.io.getStdErr().writer());
+        return;
+    }
+
+    const output_file = try std.fs.cwd().createFile(options.output_file.?, .{});
+    defer output_file.close();
+
+    try x86_ast.write(output_file.writer());
 }
