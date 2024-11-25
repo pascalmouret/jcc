@@ -14,6 +14,10 @@ pub const TokenKind = enum {
     tilde,
     hyphen,
     negate,
+    plus,
+    asterisk,
+    slash,
+    percent,
 };
 
 pub const Token = struct {
@@ -82,6 +86,26 @@ pub fn bytes_to_tokens(allocator: std.mem.Allocator, bytes: []u8) !LexerResult {
             '~' => {
                 try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
                 try tokens.append(create_token(.tilde, bytes[index .. index + 1], line, character));
+                token_start = index + 1;
+            },
+            '+' => {
+                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
+                try tokens.append(create_token(.plus, bytes[index .. index + 1], line, character));
+                token_start = index + 1;
+            },
+            '*' => {
+                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
+                try tokens.append(create_token(.asterisk, bytes[index .. index + 1], line, character));
+                token_start = index + 1;
+            },
+            '/' => {
+                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
+                try tokens.append(create_token(.slash, bytes[index .. index + 1], line, character));
+                token_start = index + 1;
+            },
+            '%' => {
+                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
+                try tokens.append(create_token(.percent, bytes[index .. index + 1], line, character));
                 token_start = index + 1;
             },
             '-' => {
