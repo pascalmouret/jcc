@@ -62,16 +62,23 @@ fn print_statement(statement: ast.Statement, printer: *PrettyPrinter) !void {
     try printer.print_line(")", .{});
 }
 
-fn print_expression(exp: *ast.Expression, printer: *PrettyPrinter) !void {
-    if (exp.* == .constant) {
-        try printer.print_line("Expression(Constant({d}))", .{exp.constant.value});
-        return;
+fn print_expression(expression: *ast.Expression, printer: *PrettyPrinter) std.fs.File.WriteError!void {
+    switch (expression.*) {
+        .factor => |factor| try print_factor(factor, printer),
+        .binary => |binary| {
+            try printer.print_line("Binary(", .{});
+            printer.indent();
+            try printer.print_line("{s}", .{@tagName(binary.operator)});
+            try print_expression(binary.left, printer);
+            try print_expression(binary.right, printer);
+            printer.undent();
+            try printer.print_line(")", .{});
+        },
     }
+}
 
-    try printer.print_line("Expression(", .{});
-    printer.indent();
-
-    switch (exp.*) {
+fn print_factor(factor: *ast.Factor, printer: *PrettyPrinter) !void {
+    switch (factor.*) {
         .unary => |u| {
             try printer.print_line("{s}(", .{@tagName(u.operator)});
             printer.indent();
@@ -79,9 +86,7 @@ fn print_expression(exp: *ast.Expression, printer: *PrettyPrinter) !void {
             printer.undent();
             try printer.print_line(")", .{});
         },
-        .constant => unreachable,
+        .expression => |e| try print_expression(e, printer),
+        .constant => try printer.print_line("Constant({d})", .{factor.constant.value}),
     }
-
-    printer.undent();
-    try printer.print_line(")", .{});
 }

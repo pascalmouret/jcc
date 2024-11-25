@@ -52,9 +52,11 @@ const PrettyEmitter = struct {
     }
     fn emit_function_definition(self: PrettyEmitter, function_definition: x86.FunctionDefinition) !void {
         try self.writer.print(
-            "   .globl _{s}\n_{s}:\n    pushq %rbp\n    movq %rsp, %rbp\n",
+            "   .globl _{s}\n_{s}:\n",
             .{ function_definition.name, function_definition.name },
         );
+        try self.print_instruction("pushq", .{x86.Operand.register(.rbp)});
+        try self.print_instruction("movq", .{ x86.Operand.register(.rsp), x86.Operand.register(.rbp) });
         for (function_definition.instructions) |instruction| {
             try self.emit_instruction(instruction);
         }

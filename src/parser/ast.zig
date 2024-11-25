@@ -67,6 +67,10 @@ const ParserContext = struct {
         return unexpected_token(next_token, kinds);
     }
 
+    pub fn consumeNext(self: *ParserContext) !void {
+        _ = try self.next();
+    }
+
     pub fn consumeA(self: *ParserContext, comptime kind: TokenKind) !void {
         _ = try self.getA(kind);
     }
@@ -74,6 +78,16 @@ const ParserContext = struct {
     pub fn consumeOneOf(self: *ParserContext, comptime kinds: []const TokenKind) !TokenKind {
         const token = try getOneOf(self, kinds);
         return token.kind;
+    }
+
+    pub fn nextIsOneOf(self: ParserContext, comptime kinds: []const TokenKind) bool {
+        const next_kind = self.peekKind() catch return false;
+
+        for (kinds) |kind| {
+            if (kind == next_kind) return true;
+        }
+
+        return false;
     }
 };
 
@@ -150,7 +164,7 @@ const Ret = struct {
     expression: *Expression,
     pub fn parse(context: *ParserContext) !Ret {
         try context.consumeA(.ret);
-        const expression = try Expression.parse(context);
+        const expression = try Expression.parse(context, 0);
         try context.consumeA(.semicolon);
         return Ret{ .expression = expression };
     }
@@ -160,27 +174,56 @@ const Ret = struct {
 };
 
 pub const Expression = union(enum) {
+    binary: Binary,
+    factor: *Factor,
+    pub fn parse(context: *ParserContext, min_precedence: usize) (ParserError || error{OutOfMemory})!*Expression {
+        var left = try (Expression{ .factor = try Factor.parse(context) }).to_owned(context.allocator);
+        errdefer left.deinit(context.allocator);
+
+        while (context.nextIsOneOf(&.{ .plus, .hyphen, .slash, .asterisk, .percent })) {
+            const operator = try BinaryOperator.peek_parse(context);
+
+            if (operator.precedence() < min_precedence) break;
+            try context.consumeNext();
+
+            const right = try Expression.parse(context, operator.precedence() + 1);
+            const old_left = left;
+            left = try (Expression{ .binary = Binary{ .operator = operator, .left = old_left, .right = right } }).to_owned(context.allocator);
+        }
+
+        return left;
+    }
+    pub fn to_owned(self: Expression, allocator: std.mem.Allocator) !*Expression {
+        const result = try allocator.create(Expression);
+        result.* = self;
+        return result;
+    }
+    pub fn deinit(self: *Expression, allocator: std.mem.Allocator) void {
+        switch (self.*) {
+            .binary => self.binary.deinit(allocator),
+            .factor => self.factor.deinit(allocator),
+        }
+        allocator.destroy(self);
+    }
+};
+
+pub const Factor = union(enum) {
     constant: Constant,
     unary: Unary,
-    pub fn parse(context: *ParserContext) (ParserError || error{OutOfMemory})!*Expression {
+    expression: *Expression,
+    pub fn parse(context: *ParserContext) (ParserError || error{OutOfMemory})!*Factor {
         switch (try context.peekKind()) {
             .constant => {
-                const result = try context.allocator.create(Expression);
-                errdefer context.allocator.destroy(result);
-                result.* = .{ .constant = try Constant.parse(context) };
-                return result;
+                return (Factor{ .constant = try Constant.parse(context) }).to_owned(context.allocator);
             },
             .hyphen, .tilde => {
-                const result = try context.allocator.create(Expression);
-                errdefer context.allocator.destroy(result);
-                result.* = .{ .unary = try Unary.parse(context) };
-                return result;
+                return (Factor{ .unary = try Unary.parse(context) }).to_owned(context.allocator);
             },
             .open_parenthesis => {
                 try context.consumeA(.open_parenthesis);
-                const expression = try Expression.parse(context);
+                const expression = try Expression.parse(context, 0);
                 try context.consumeA(.close_parenthesis);
-                return expression;
+                return (Factor{ .expression = expression }).to_owned(context.allocator);
             },
             else => {
                 const token = try context.next();
@@ -194,9 +237,15 @@ pub const Expression = union(enum) {
             },
         }
     }
-    pub fn deinit(self: *Expression, allocator: std.mem.Allocator) void {
+    pub fn to_owned(self: Factor, allocator: std.mem.Allocator) !*Factor {
+        const result = try allocator.create(Factor);
+        result.* = self;
+        return result;
+    }
+    pub fn deinit(self: *Factor, allocator: std.mem.Allocator) void {
         switch (self.*) {
-            .unary => self.unary.expression.deinit(allocator),
+            .unary => self.unary.deinit(allocator),
+            .expression => self.expression.deinit(allocator),
             else => {},
         }
         allocator.destroy(self);
@@ -219,10 +268,51 @@ const Unary = struct {
     expression: *Expression,
     pub fn parse(context: *ParserContext) !Unary {
         switch (try context.consumeOneOf(&.{ .hyphen, .tilde })) {
-            .hyphen => return Unary{ .operator = .negate, .expression = try Expression.parse(context) },
-            .tilde => return Unary{ .operator = .complement, .expression = try Expression.parse(context) },
+            .hyphen => return Unary{ .operator = .negate, .expression = try Expression.parse(context, 0) },
+            .tilde => return Unary{ .operator = .complement, .expression = try Expression.parse(context, 0) },
             else => unreachable,
         }
+    }
+    pub fn deinit(self: Unary, allocator: std.mem.Allocator) void {
+        self.expression.deinit(allocator);
+    }
+};
+
+const BinaryOperator = enum {
+    add,
+    subtract,
+    divide,
+    multiply,
+    modulo,
+    pub fn peek_parse(context: *ParserContext) !BinaryOperator {
+        const next_kind = try context.peekKind();
+        return switch (next_kind) {
+            .plus => .add,
+            .hyphen => .subtract,
+            .slash => .divide,
+            .asterisk => .multiply,
+            .percent => .modulo,
+            else => unreachable,
+        };
+    }
+    pub fn precedence(self: BinaryOperator) usize {
+        return switch (self) {
+            .modulo => 50,
+            .multiply => 50,
+            .divide => 50,
+            .add => 45,
+            .subtract => 45,
+        };
+    }
+};
+
+const Binary = struct {
+    operator: BinaryOperator,
+    left: *Expression,
+    right: *Expression,
+    pub fn deinit(self: Binary, allocator: std.mem.Allocator) void {
+        self.left.deinit(allocator);
+        self.right.deinit(allocator);
     }
 };
 
