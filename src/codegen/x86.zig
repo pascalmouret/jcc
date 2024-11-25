@@ -104,6 +104,7 @@ pub const Instruction = union(enum) {
                 try list.append(Instruction.mov(Operand.from_val(u.src), Operand.pseudo(u.dst.name)));
                 try list.append(Instruction.unary(UnaryOperator.from_tacky(u), Operand.pseudo(u.dst.name)));
             },
+            else => unreachable,
         }
     }
     pub fn mov(src: Operand, dst: Operand) Instruction {

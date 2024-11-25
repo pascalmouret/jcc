@@ -33,6 +33,7 @@ pub const FunctionDefinition = struct {
 pub const Instruction = union(enum) {
     unary: Unary,
     ret: Ret,
+    binary: Binary,
     pub fn from_statement(allocator: Allocator, statement: ast.Statement) ![]Instruction {
         var list = std.ArrayList(Instruction).init(allocator);
         defer list.deinit();
@@ -48,21 +49,34 @@ pub const Instruction = union(enum) {
     }
     fn resolve_expression(list: *std.ArrayList(Instruction), expression: *ast.Expression) error{OutOfMemory}!Val {
         switch (expression.*) {
-            .constant => |exp| return Val{ .constant = Constant{ .value = exp.value } },
-            .unary => |exp| {
-                const src = try Instruction.resolve_expression(list, exp.expression);
+            .factor => |factor| return try resolve_factor(list, factor),
+            .binary => |binary| {
+                const src1 = try Instruction.resolve_expression(list, binary.left);
+                const src2 = try Instruction.resolve_expression(list, binary.right);
                 const dst = try Tmp.make(list.allocator);
-                switch (exp.operator) {
-                    .complement => try list.append(Instruction{ .unary = Unary{ .operator = .complement, .src = src, .dst = dst } }),
-                    .negate => try list.append(Instruction{ .unary = Unary{ .operator = .negate, .src = src, .dst = dst } }),
-                }
+                try list.append(Instruction{ .binary = Binary{ .operator = binary.operator, .src1 = src1, .src2 = src2, .dst = dst } });
                 return Val{ .tmp = dst };
+            },
+        }
+    }
+    fn resolve_factor(list: *std.ArrayList(Instruction), factor: *ast.Factor) error{OutOfMemory}!Val {
+        switch (factor.*) {
+            .constant => |constant| return Val{ .constant = Constant{ .value = constant.value } },
+            .unary => |unary| {
+                const src = try Instruction.resolve_expression(list, unary.expression);
+                const dst = try Tmp.make(list.allocator);
+                try list.append(Instruction{ .unary = Unary{ .operator = unary.operator, .src = src, .dst = dst } });
+                return Val{ .tmp = dst };
+            },
+            .expression => |exp| {
+                return try resolve_expression(list, exp);
             },
         }
     }
     pub fn deinit(self: Instruction, allocator: Allocator) void {
         switch (self) {
             .unary => |i| i.deinit(allocator),
+            .binary => |i| i.deinit(allocator),
             else => {},
         }
     }
@@ -76,10 +90,20 @@ const Ret = struct {
 };
 
 pub const Unary = struct {
-    operator: enum { complement, negate },
+    operator: ast.UnaryOperator,
     src: Val,
     dst: Tmp,
     pub fn deinit(self: Unary, alloator: Allocator) void {
+        self.dst.deinit(alloator);
+    }
+};
+
+pub const Binary = struct {
+    operator: ast.BinaryOperator,
+    src1: Val,
+    src2: Val,
+    dst: Tmp,
+    pub fn deinit(self: Binary, alloator: Allocator) void {
         self.dst.deinit(alloator);
     }
 };

@@ -23,6 +23,13 @@ pub fn print_instruction(instruction: tacky.Instruction, writer: std.fs.File.Wri
             try print_val(op.src, writer);
             try writer.writeByte('\n');
         },
+        .binary => |op| {
+            try writer.print("    {s} = {s} ", .{ op.dst.name, @tagName(op.operator) });
+            try print_val(op.src1, writer);
+            try writer.writeByte(' ');
+            try print_val(op.src2, writer);
+            try writer.writeByte('\n');
+        },
     }
 }
 

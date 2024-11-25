@@ -263,8 +263,13 @@ const Constant = struct {
     }
 };
 
+pub const UnaryOperator = enum {
+    negate,
+    complement,
+};
+
 const Unary = struct {
-    operator: enum { negate, complement },
+    operator: UnaryOperator,
     expression: *Expression,
     pub fn parse(context: *ParserContext) !Unary {
         switch (try context.consumeOneOf(&.{ .hyphen, .tilde })) {
@@ -278,7 +283,7 @@ const Unary = struct {
     }
 };
 
-const BinaryOperator = enum {
+pub const BinaryOperator = enum {
     add,
     subtract,
     divide,
