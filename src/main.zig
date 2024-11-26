@@ -60,10 +60,7 @@ pub fn run_compiler(allocator: std.mem.Allocator) !void {
     const x86_program = try x86.program_to_x86(allocator, tacky_program);
     defer x86_program.deinit();
 
-    if (options.stage == .codegen) {
-        try emit_x86_program(x86_program, std.io.getStdErr().writer());
-        return;
-    }
+    if (options.stage == .codegen) return;
 
     const output_file = try std.fs.cwd().createFile(options.output_file.?, .{});
     defer output_file.close();

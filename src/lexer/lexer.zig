@@ -13,11 +13,17 @@ pub const TokenKind = enum {
     ret,
     tilde,
     hyphen,
-    negate,
+    decrement,
     plus,
+    increment,
     asterisk,
     slash,
     percent,
+    ampersand,
+    pipe,
+    caret,
+    shift_left,
+    shift_right,
 };
 
 pub const Token = struct {
@@ -31,6 +37,7 @@ const LexerError = error{
     InvalidConstant,
     InvalidIdentifier,
     InvalidCharacter,
+    InvalidToken,
 };
 
 const LexerResult = struct {
@@ -55,89 +62,69 @@ pub fn bytes_to_tokens(allocator: std.mem.Allocator, bytes: []u8) !LexerResult {
     var token_start: usize = 0;
 
     while (index < bytes.len) : (index += 1) {
-        const byte = bytes[index];
+        if (extract_byte_token(bytes[index .. index + 1], line, character)) |token| {
+            try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
+            try tokens.append(token);
+            token_start = index + 1;
+        } else {
+            switch (bytes[index]) {
+                '\n' => {
+                    try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
+                    line += 1;
+                    character = 0; // will be incremented at the end of the loop
+                    token_start = index + 1;
+                },
+                ' ', '\t' => {
+                    try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
+                    token_start = index + 1;
+                },
+                '-', '+', '>', '<' => {
+                    try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
 
-        switch (byte) {
-            '(' => {
-                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
-                try tokens.append(create_token(.open_parenthesis, bytes[index .. index + 1], line, character));
-                token_start = index + 1;
-            },
-            ')' => {
-                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
-                try tokens.append(create_token(.close_parenthesis, bytes[index .. index + 1], line, character));
-                token_start = index + 1;
-            },
-            '{' => {
-                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
-                try tokens.append(create_token(.open_brace, bytes[index .. index + 1], line, character));
-                token_start = index + 1;
-            },
-            '}' => {
-                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
-                try tokens.append(create_token(.close_brace, bytes[index .. index + 1], line, character));
-                token_start = index + 1;
-            },
-            ';' => {
-                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
-                try tokens.append(create_token(.semicolon, bytes[index .. index + 1], line, character));
-                token_start = index + 1;
-            },
-            '~' => {
-                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
-                try tokens.append(create_token(.tilde, bytes[index .. index + 1], line, character));
-                token_start = index + 1;
-            },
-            '+' => {
-                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
-                try tokens.append(create_token(.plus, bytes[index .. index + 1], line, character));
-                token_start = index + 1;
-            },
-            '*' => {
-                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
-                try tokens.append(create_token(.asterisk, bytes[index .. index + 1], line, character));
-                token_start = index + 1;
-            },
-            '/' => {
-                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
-                try tokens.append(create_token(.slash, bytes[index .. index + 1], line, character));
-                token_start = index + 1;
-            },
-            '%' => {
-                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
-                try tokens.append(create_token(.percent, bytes[index .. index + 1], line, character));
-                token_start = index + 1;
-            },
-            '-' => {
-                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
+                    if (bytes[index + 1] == bytes[index]) {
+                        try parse_multibyte_token(bytes[index .. index + 2], &tokens, line, character);
+                        index += 1;
+                        character += 1;
+                    } else {
+                        try parse_multibyte_token(bytes[index .. index + 1], &tokens, line, character);
+                    }
 
-                if (bytes[index + 1] == '-') {
-                    try tokens.append(create_token(.negate, bytes[index .. index + 1], line, character));
-                    index += 1;
-                } else {
-                    try tokens.append(create_token(.hyphen, bytes[index .. index + 1], line, character));
-                }
-
-                token_start = index + 1;
-            },
-            '\n' => {
-                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
-                line += 1;
-                character = 0; // will be incremented at the end of the loop
-                token_start = index + 1;
-            },
-            ' ', '\t' => {
-                try parse_multibyte_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
-                token_start = index + 1;
-            },
-            'a'...'z', 'A'...'Z', '0'...'9', '_' => {},
-            else => return lexer_error(LexerError.InvalidCharacter, line, character, "'{c}' is not a valid character", .{byte}),
+                    token_start = index + 1;
+                },
+                'a'...'z', 'A'...'Z', '0'...'9', '_' => {},
+                else => return lexer_error(LexerError.InvalidCharacter, line, character, "'{c}' is not a valid character", .{bytes[index]}),
+            }
         }
+
         character += 1;
     }
 
     try parse_multibyte_token(bytes[token_start..], &tokens, line, character - (bytes.len - token_start));
     return LexerResult.create(allocator, try tokens.toOwnedSlice());
+}
+
+pub fn extract_byte_token(bytes: []u8, line: usize, character: usize) ?Token {
+    const maybe_kind: ?TokenKind = switch (bytes[0]) {
+        '(' => .open_parenthesis,
+        ')' => .close_parenthesis,
+        '{' => .open_brace,
+        '}' => .close_brace,
+        ';' => .semicolon,
+        '~' => .tilde,
+        '*' => .asterisk,
+        '/' => .slash,
+        '%' => .percent,
+        '|' => .pipe,
+        '&' => .ampersand,
+        '^' => .caret,
+        else => null,
+    };
+
+    if (maybe_kind) |kind| {
+        return create_token(kind, bytes, line, character);
+    } else {
+        return null;
+    }
 }
 
 fn parse_multibyte_token(
@@ -175,6 +162,27 @@ fn parse_multibyte_token(
                 }
             }
             try list.append(create_token(.constant, token, line, character));
+        },
+        '-', '+', '>', '<' => {
+            const kind: TokenKind = blk: {
+                if (std.mem.eql(u8, token, "-")) {
+                    break :blk .hyphen;
+                } else if (std.mem.eql(u8, token, "+")) {
+                    break :blk .plus;
+                } else if (std.mem.eql(u8, token, "--")) {
+                    break :blk .decrement;
+                } else if (std.mem.eql(u8, token, "++")) {
+                    break :blk .increment;
+                } else if (std.mem.eql(u8, token, ">>")) {
+                    break :blk .shift_right;
+                } else if (std.mem.eql(u8, token, "<<")) {
+                    break :blk .shift_left;
+                } else {
+                    return lexer_error(LexerError.InvalidToken, line, character, "'{s}' is not a valid token", .{token});
+                }
+            };
+
+            try list.append(create_token(kind, token, line, character));
         },
         else => unreachable,
     }
