@@ -36,7 +36,9 @@ const PrettyEmitter = struct {
             .register => |register| {
                 switch (register) {
                     .ax => try self.writer.writeAll("%eax"),
+                    .dx => try self.writer.writeAll("%edx"),
                     .r10 => try self.writer.writeAll("%r10d"),
+                    .r11 => try self.writer.writeAll("%r11d"),
                     .rsp => try self.writer.writeAll("%rsp"),
                     .rbp => try self.writer.writeAll("%rbp"),
                 }
@@ -71,10 +73,20 @@ const PrettyEmitter = struct {
             },
             .unary => |unary| {
                 switch (unary.operator) {
-                    .not => try self.print_instruction("notl", .{unary.operand}),
-                    .neg => try self.print_instruction("negl", .{unary.operand}),
+                    .complement => try self.print_instruction("notl", .{unary.operand}),
+                    .negate => try self.print_instruction("negl", .{unary.operand}),
                 }
             },
+            .binary => |binary| {
+                switch (binary.operator) {
+                    .add => try self.print_instruction("addl", .{ binary.operand1, binary.operand2 }),
+                    .subtract => try self.print_instruction("subl", .{ binary.operand1, binary.operand2 }),
+                    .multiply => try self.print_instruction("imull", .{ binary.operand1, binary.operand2 }),
+                    else => unreachable,
+                }
+            },
+            .idiv => |idiv| try self.print_instruction("idivl", .{idiv.operand}),
+            .cdq => try self.print_instruction("cdq", .{}),
             .allocate_stack => |allocate| try self.print_instruction("subq", .{ allocate.operand, x86.Operand.register(.rsp) }),
         }
     }

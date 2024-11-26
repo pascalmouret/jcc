@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const tacky = @import("../tacky.zig").tacky;
+const ast = @import("../parser.zig").ast;
 
 pub fn program_to_x86(allocator: std.mem.Allocator, program: tacky.Program) !Program {
     return try Program.from_program(allocator, program);
@@ -56,6 +57,12 @@ pub const FunctionDefinition = struct {
                 .unary => |unary| {
                     try list.append(Instruction.unary(unary.operator, try unary.operand.stack_if_pseudo(&offset_map)));
                 },
+                .binary => |binary| {
+                    try list.append(Instruction.binary(binary.operator, try binary.operand1.stack_if_pseudo(&offset_map), try binary.operand2.stack_if_pseudo(&offset_map)));
+                },
+                .idiv => |idiv| {
+                    try list.append(Instruction.idiv(try idiv.operand.stack_if_pseudo(&offset_map)));
+                },
                 else => try list.append(instruction),
             }
         }
@@ -74,12 +81,34 @@ pub const FunctionDefinition = struct {
                     if (mov.dst == .stack and mov.src == .stack) {
                         try list.append(Instruction.mov(mov.src, Operand.register(.r10)));
                         try list.append(Instruction.mov(Operand.register(.r10), mov.dst));
-                    } else {
-                        try list.append(instruction);
+                        continue;
                     }
                 },
-                else => try list.append(instruction),
+                .idiv => |idiv| {
+                    if (idiv.operand == .immediate) {
+                        try list.append(Instruction.mov(idiv.operand, Operand.register(.r10)));
+                        try list.append(Instruction.idiv(Operand.register(.r10)));
+                        continue;
+                    }
+                },
+                .binary => |binary| {
+                    if ((binary.operator == .add or binary.operator == .subtract) and (binary.operand1 == .stack and binary.operand2 == .stack)) {
+                        try list.append(Instruction.mov(binary.operand1, Operand.register(.r10)));
+                        try list.append(Instruction.binary(binary.operator, Operand.register(.r10), binary.operand2));
+                        continue;
+                    }
+
+                    if (binary.operator == .multiply) {
+                        try list.append(Instruction.mov(binary.operand2, Operand.register(.r11)));
+                        try list.append(Instruction.binary(binary.operator, binary.operand1, Operand.register(.r11)));
+                        try list.append(Instruction.mov(Operand.register(.r11), binary.operand2));
+                        continue;
+                    }
+                },
+                else => {},
             }
+
+            try list.append(instruction);
         }
 
         return list.toOwnedSlice();
@@ -93,18 +122,39 @@ pub const Instruction = union(enum) {
     mov: Mov,
     ret: Ret,
     unary: Unary,
+    binary: Binary,
+    idiv: Idiv,
+    cdq: Cdq,
     allocate_stack: AllocateStack,
     pub fn append_from_instruction(list: *std.ArrayList(Instruction), instruction: tacky.Instruction) !void {
         switch (instruction) {
             .ret => |r| {
-                try list.append(Instruction.mov(Operand.from_val(r.val), Operand.register(Register.ax)));
+                try list.append(Instruction.mov(Operand.from_val(r.val), Operand.register(.ax)));
                 try list.append(Instruction.ret());
             },
             .unary => |u| {
                 try list.append(Instruction.mov(Operand.from_val(u.src), Operand.pseudo(u.dst.name)));
-                try list.append(Instruction.unary(UnaryOperator.from_tacky(u), Operand.pseudo(u.dst.name)));
+                try list.append(Instruction.unary(u.operator, Operand.pseudo(u.dst.name)));
             },
-            else => unreachable,
+            .binary => |b| {
+                switch (b.operator) {
+                    .divide, .modulo => {
+                        try list.append(Instruction.mov(Operand.from_val(b.src1), Operand.register(.ax)));
+                        try list.append(Instruction.cdq());
+                        try list.append(Instruction.idiv(Operand.from_val(b.src2)));
+
+                        if (b.operator == .divide) {
+                            try list.append(Instruction.mov(Operand.register(.ax), Operand.pseudo(b.dst.name)));
+                        } else {
+                            try list.append(Instruction.mov(Operand.register(.dx), Operand.pseudo(b.dst.name)));
+                        }
+                    },
+                    else => {
+                        try list.append(Instruction.mov(Operand.from_val(b.src1), Operand.pseudo(b.dst.name)));
+                        try list.append(Instruction.binary(b.operator, Operand.from_val(b.src2), Operand.pseudo(b.dst.name)));
+                    },
+                }
+            },
         }
     }
     pub fn mov(src: Operand, dst: Operand) Instruction {
@@ -113,8 +163,17 @@ pub const Instruction = union(enum) {
     pub fn ret() Instruction {
         return Instruction{ .ret = Ret{} };
     }
-    pub fn unary(operator: UnaryOperator, operand: Operand) Instruction {
+    pub fn unary(operator: ast.UnaryOperator, operand: Operand) Instruction {
         return Instruction{ .unary = Unary{ .operator = operator, .operand = operand } };
+    }
+    pub fn binary(operator: ast.BinaryOperator, operand1: Operand, operand2: Operand) Instruction {
+        return Instruction{ .binary = Binary{ .operator = operator, .operand1 = operand1, .operand2 = operand2 } };
+    }
+    pub fn idiv(operand: Operand) Instruction {
+        return Instruction{ .idiv = Idiv{ .operand = operand } };
+    }
+    pub fn cdq() Instruction {
+        return Instruction{ .cdq = Cdq{} };
     }
     pub fn allocate_stack(size: isize) Instruction {
         return Instruction{ .allocate_stack = AllocateStack{ .operand = Operand.immediate(size) } };
@@ -128,21 +187,22 @@ const Mov = struct {
     dst: Operand,
 };
 
-const UnaryOperator = enum {
-    neg,
-    not,
-    pub fn from_tacky(unary: tacky.Unary) UnaryOperator {
-        switch (unary.operator) {
-            .complement => return .not,
-            .negate => return .neg,
-        }
-    }
-};
-
 const Unary = struct {
-    operator: UnaryOperator,
+    operator: ast.UnaryOperator,
     operand: Operand,
 };
+
+const Binary = struct {
+    operator: ast.BinaryOperator,
+    operand1: Operand,
+    operand2: Operand,
+};
+
+const Idiv = struct {
+    operand: Operand,
+};
+
+const Cdq = struct {};
 
 const AllocateStack = struct {
     operand: Operand,
@@ -192,7 +252,9 @@ const Immediate = union(enum) {
 
 const Register = enum {
     ax,
+    dx,
     r10,
+    r11,
     rsp,
     rbp,
 };

@@ -82,7 +82,7 @@ fn print_factor(factor: *ast.Factor, printer: *PrettyPrinter) !void {
         .unary => |u| {
             try printer.print_line("{s}(", .{@tagName(u.operator)});
             printer.indent();
-            try print_expression(u.expression, printer);
+            try print_factor(u.factor, printer);
             printer.undent();
             try printer.print_line(")", .{});
         },

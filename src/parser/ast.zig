@@ -270,16 +270,16 @@ pub const UnaryOperator = enum {
 
 const Unary = struct {
     operator: UnaryOperator,
-    expression: *Expression,
+    factor: *Factor,
     pub fn parse(context: *ParserContext) !Unary {
         switch (try context.consumeOneOf(&.{ .hyphen, .tilde })) {
-            .hyphen => return Unary{ .operator = .negate, .expression = try Expression.parse(context, 0) },
-            .tilde => return Unary{ .operator = .complement, .expression = try Expression.parse(context, 0) },
+            .hyphen => return Unary{ .operator = .negate, .factor = try Factor.parse(context) },
+            .tilde => return Unary{ .operator = .complement, .factor = try Factor.parse(context) },
             else => unreachable,
         }
     }
     pub fn deinit(self: Unary, allocator: std.mem.Allocator) void {
-        self.expression.deinit(allocator);
+        self.factor.deinit(allocator);
     }
 };
 

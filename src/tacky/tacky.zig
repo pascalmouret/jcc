@@ -63,7 +63,7 @@ pub const Instruction = union(enum) {
         switch (factor.*) {
             .constant => |constant| return Val{ .constant = Constant{ .value = constant.value } },
             .unary => |unary| {
-                const src = try Instruction.resolve_expression(list, unary.expression);
+                const src = try Instruction.resolve_factor(list, unary.factor);
                 const dst = try Tmp.make(list.allocator);
                 try list.append(Instruction{ .unary = Unary{ .operator = unary.operator, .src = src, .dst = dst } });
                 return Val{ .tmp = dst };
