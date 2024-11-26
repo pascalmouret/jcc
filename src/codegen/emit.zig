@@ -37,6 +37,7 @@ const PrettyEmitter = struct {
                 switch (register) {
                     .ax => try self.writer.writeAll("%eax"),
                     .dx => try self.writer.writeAll("%edx"),
+                    .cl => try self.writer.writeAll("%cl"),
                     .r10 => try self.writer.writeAll("%r10d"),
                     .r11 => try self.writer.writeAll("%r11d"),
                     .rsp => try self.writer.writeAll("%rsp"),
@@ -65,7 +66,13 @@ const PrettyEmitter = struct {
     }
     fn emit_instruction(self: PrettyEmitter, instruction: x86.Instruction) !void {
         switch (instruction) {
-            .mov => |mov| try self.print_instruction("movl", .{ mov.src, mov.dst }),
+            .mov => |mov| {
+                if (mov.dst == .register and mov.dst.register == .cl) {
+                    try self.print_instruction("movb", .{ mov.src, mov.dst });
+                } else {
+                    try self.print_instruction("movl", .{ mov.src, mov.dst });
+                }
+            },
             .ret => {
                 try self.print_instruction("movq", .{ x86.Operand.register(.rbp), x86.Operand.register(.rsp) });
                 try self.print_instruction("popq", .{x86.Operand.register(.rbp)});
@@ -82,6 +89,11 @@ const PrettyEmitter = struct {
                     .add => try self.print_instruction("addl", .{ binary.operand1, binary.operand2 }),
                     .subtract => try self.print_instruction("subl", .{ binary.operand1, binary.operand2 }),
                     .multiply => try self.print_instruction("imull", .{ binary.operand1, binary.operand2 }),
+                    .@"and" => try self.print_instruction("andl", .{ binary.operand1, binary.operand2 }),
+                    .@"or" => try self.print_instruction("orl", .{ binary.operand1, binary.operand2 }),
+                    .xor => try self.print_instruction("xorl", .{ binary.operand1, binary.operand2 }),
+                    .shift_left => try self.print_instruction("sall", .{ binary.operand1, binary.operand2 }),
+                    .shift_right => try self.print_instruction("sarl", .{ binary.operand1, binary.operand2 }),
                     else => unreachable,
                 }
             },

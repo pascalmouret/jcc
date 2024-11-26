@@ -180,7 +180,7 @@ pub const Expression = union(enum) {
         var left = try (Expression{ .factor = try Factor.parse(context) }).to_owned(context.allocator);
         errdefer left.deinit(context.allocator);
 
-        while (context.nextIsOneOf(&.{ .plus, .hyphen, .slash, .asterisk, .percent })) {
+        while (context.nextIsOneOf(&.{ .plus, .hyphen, .slash, .asterisk, .percent, .ampersand, .pipe, .caret, .shift_left, .shift_right })) {
             const operator = try BinaryOperator.peek_parse(context);
 
             if (operator.precedence() < min_precedence) break;
@@ -289,6 +289,11 @@ pub const BinaryOperator = enum {
     divide,
     multiply,
     modulo,
+    @"and",
+    @"or",
+    xor,
+    shift_left,
+    shift_right,
     pub fn peek_parse(context: *ParserContext) !BinaryOperator {
         const next_kind = try context.peekKind();
         return switch (next_kind) {
@@ -297,6 +302,11 @@ pub const BinaryOperator = enum {
             .slash => .divide,
             .asterisk => .multiply,
             .percent => .modulo,
+            .ampersand => .@"and",
+            .pipe => .@"or",
+            .caret => .xor,
+            .shift_left => .shift_left,
+            .shift_right => .shift_right,
             else => unreachable,
         };
     }
@@ -307,6 +317,11 @@ pub const BinaryOperator = enum {
             .divide => 50,
             .add => 45,
             .subtract => 45,
+            .shift_left => 40,
+            .shift_right => 40,
+            .@"and" => 35,
+            .xor => 30,
+            .@"or" => 25,
         };
     }
 };

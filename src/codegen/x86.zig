@@ -38,7 +38,7 @@ pub const FunctionDefinition = struct {
         const stacked = try FunctionDefinition.replace_pseudo(allocator, initial);
         defer allocator.free(stacked);
 
-        const final = try FunctionDefinition.fix_memory_mov(allocator, stacked);
+        const final = try FunctionDefinition.fix_instructions(allocator, stacked);
 
         return FunctionDefinition{ .name = function_definition.name, .instructions = final };
     }
@@ -71,7 +71,7 @@ pub const FunctionDefinition = struct {
 
         return try list.toOwnedSlice();
     }
-    pub fn fix_memory_mov(allocator: std.mem.Allocator, instructions: []const Instruction) ![]Instruction {
+    pub fn fix_instructions(allocator: std.mem.Allocator, instructions: []const Instruction) ![]Instruction {
         var list = std.ArrayList(Instruction).init(allocator);
         defer list.deinit();
 
@@ -92,9 +92,15 @@ pub const FunctionDefinition = struct {
                     }
                 },
                 .binary => |binary| {
-                    if ((binary.operator == .add or binary.operator == .subtract) and (binary.operand1 == .stack and binary.operand2 == .stack)) {
+                    if ((binary.operator == .add or binary.operator == .subtract or binary.operator == .@"and" or binary.operator == .@"or" or binary.operator == .xor) and (binary.operand1 == .stack and binary.operand2 == .stack)) {
                         try list.append(Instruction.mov(binary.operand1, Operand.register(.r10)));
                         try list.append(Instruction.binary(binary.operator, Operand.register(.r10), binary.operand2));
+                        continue;
+                    }
+
+                    if ((binary.operator == .shift_left or binary.operator == .shift_right) and binary.operand2 != .immediate) {
+                        try list.append(Instruction.mov(binary.operand1, Operand.register(.cl)));
+                        try list.append(Instruction.binary(binary.operator, Operand.register(.cl), binary.operand2));
                         continue;
                     }
 
@@ -253,6 +259,7 @@ const Immediate = union(enum) {
 const Register = enum {
     ax,
     dx,
+    cl,
     r10,
     r11,
     rsp,
