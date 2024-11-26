@@ -180,7 +180,7 @@ pub const Expression = union(enum) {
         var left = try (Expression{ .factor = try Factor.parse(context) }).to_owned(context.allocator);
         errdefer left.deinit(context.allocator);
 
-        while (context.nextIsOneOf(&.{ .plus, .hyphen, .slash, .asterisk, .percent, .ampersand, .pipe, .caret, .shift_left, .shift_right })) {
+        while (context.nextIsOneOf(&BinaryOperator.token_kinds)) {
             const operator = try BinaryOperator.peek_parse(context);
 
             if (operator.precedence() < min_precedence) break;
@@ -216,7 +216,7 @@ pub const Factor = union(enum) {
             .constant => {
                 return (Factor{ .constant = try Constant.parse(context) }).to_owned(context.allocator);
             },
-            .hyphen, .tilde => {
+            .hyphen, .tilde, .exclamation_point => {
                 return (Factor{ .unary = try Unary.parse(context) }).to_owned(context.allocator);
             },
             .open_parenthesis => {
@@ -266,15 +266,17 @@ const Constant = struct {
 pub const UnaryOperator = enum {
     negate,
     complement,
+    logical_not,
 };
 
 const Unary = struct {
     operator: UnaryOperator,
     factor: *Factor,
     pub fn parse(context: *ParserContext) !Unary {
-        switch (try context.consumeOneOf(&.{ .hyphen, .tilde })) {
+        switch (try context.consumeOneOf(&.{ .hyphen, .tilde, .exclamation_point })) {
             .hyphen => return Unary{ .operator = .negate, .factor = try Factor.parse(context) },
             .tilde => return Unary{ .operator = .complement, .factor = try Factor.parse(context) },
+            .exclamation_point => return Unary{ .operator = .logical_not, .factor = try Factor.parse(context) },
             else => unreachable,
         }
     }
@@ -283,17 +285,48 @@ const Unary = struct {
     }
 };
 
+// TODO: less boilerplate?
 pub const BinaryOperator = enum {
     add,
     subtract,
     divide,
     multiply,
     modulo,
-    @"and",
-    @"or",
+    bitwise_and,
+    bitwise_or,
     xor,
     shift_left,
     shift_right,
+    less_than,
+    less_than_equal,
+    greater_than,
+    greater_than_equal,
+    equal,
+    not_equal,
+    logical_and,
+    logical_or,
+
+    pub const token_kinds: [18]TokenKind = .{
+        .plus,
+        .hyphen,
+        .slash,
+        .asterisk,
+        .percent,
+        .ampersand,
+        .pipe,
+        .caret,
+        .shift_left,
+        .shift_right,
+        .less,
+        .less_equal,
+        .greater,
+        .greater_equal,
+        .equal,
+        .not_equal,
+        .logical_and,
+        .logical_or,
+    };
+
     pub fn peek_parse(context: *ParserContext) !BinaryOperator {
         const next_kind = try context.peekKind();
         return switch (next_kind) {
@@ -302,11 +335,19 @@ pub const BinaryOperator = enum {
             .slash => .divide,
             .asterisk => .multiply,
             .percent => .modulo,
-            .ampersand => .@"and",
-            .pipe => .@"or",
+            .ampersand => .bitwise_and,
+            .pipe => .bitwise_or,
             .caret => .xor,
             .shift_left => .shift_left,
             .shift_right => .shift_right,
+            .less => .less_than,
+            .less_equal => .less_than_equal,
+            .greater => .greater_than,
+            .greater_equal => .greater_than_equal,
+            .equal => .equal,
+            .not_equal => .not_equal,
+            .logical_and => .logical_and,
+            .logical_or => .logical_or,
             else => unreachable,
         };
     }
@@ -319,9 +360,17 @@ pub const BinaryOperator = enum {
             .subtract => 45,
             .shift_left => 40,
             .shift_right => 40,
-            .@"and" => 35,
-            .xor => 30,
-            .@"or" => 25,
+            .less_than => 35,
+            .less_than_equal => 35,
+            .greater_than => 35,
+            .greater_than_equal => 35,
+            .equal => 30,
+            .not_equal => 30,
+            .bitwise_and => 25,
+            .xor => 20,
+            .bitwise_or => 20,
+            .logical_and => 15,
+            .logical_or => 15,
         };
     }
 };
@@ -347,6 +396,7 @@ fn parser_error(
     return err;
 }
 
+// TODO: fix broken error output
 fn unexpected_token(
     actual: Token,
     comptime expected: []const TokenKind,

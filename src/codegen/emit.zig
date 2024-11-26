@@ -82,6 +82,7 @@ const PrettyEmitter = struct {
                 switch (unary.operator) {
                     .complement => try self.print_instruction("notl", .{unary.operand}),
                     .negate => try self.print_instruction("negl", .{unary.operand}),
+                    else => unreachable,
                 }
             },
             .binary => |binary| {
@@ -89,8 +90,8 @@ const PrettyEmitter = struct {
                     .add => try self.print_instruction("addl", .{ binary.operand1, binary.operand2 }),
                     .subtract => try self.print_instruction("subl", .{ binary.operand1, binary.operand2 }),
                     .multiply => try self.print_instruction("imull", .{ binary.operand1, binary.operand2 }),
-                    .@"and" => try self.print_instruction("andl", .{ binary.operand1, binary.operand2 }),
-                    .@"or" => try self.print_instruction("orl", .{ binary.operand1, binary.operand2 }),
+                    .bitwise_and => try self.print_instruction("andl", .{ binary.operand1, binary.operand2 }),
+                    .bitwise_or => try self.print_instruction("orl", .{ binary.operand1, binary.operand2 }),
                     .xor => try self.print_instruction("xorl", .{ binary.operand1, binary.operand2 }),
                     .shift_left => try self.print_instruction("sall", .{ binary.operand1, binary.operand2 }),
                     .shift_right => try self.print_instruction("sarl", .{ binary.operand1, binary.operand2 }),
