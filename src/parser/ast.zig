@@ -379,6 +379,9 @@ const Binary = struct {
     operator: BinaryOperator,
     left: *Expression,
     right: *Expression,
+    pub fn can_short_circuit(self: Binary) bool {
+        return self.operator == .logical_or or self.operator == .logical_and;
+    }
     pub fn deinit(self: Binary, allocator: std.mem.Allocator) void {
         self.left.deinit(allocator);
         self.right.deinit(allocator);

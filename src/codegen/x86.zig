@@ -161,6 +161,7 @@ pub const Instruction = union(enum) {
                     },
                 }
             },
+            else => unreachable,
         }
     }
     pub fn mov(src: Operand, dst: Operand) Instruction {

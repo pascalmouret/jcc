@@ -16,21 +16,36 @@ pub fn print_instruction(instruction: tacky.Instruction, writer: std.fs.File.Wri
         .ret => |ret| {
             try writer.writeAll("    return ");
             try print_val(ret.val, writer);
-            try writer.writeByte('\n');
         },
         .unary => |op| {
             try writer.print("    {s} = {s} ", .{ op.dst.name, @tagName(op.operator) });
             try print_val(op.src, writer);
-            try writer.writeByte('\n');
         },
         .binary => |op| {
             try writer.print("    {s} = {s} ", .{ op.dst.name, @tagName(op.operator) });
             try print_val(op.src1, writer);
             try writer.writeByte(' ');
             try print_val(op.src2, writer);
-            try writer.writeByte('\n');
+        },
+        .jump => |op| {
+            if (op.condition) |condition| {
+                try writer.print("    jump {s} ", .{@tagName(condition.on)});
+                try print_val(condition.val, writer);
+                try writer.writeAll(": ");
+            } else {
+                try writer.writeAll("    jump: ");
+            }
+            try writer.writeAll(op.label);
+        },
+        .copy => |op| {
+            try writer.print("    {s} = ", .{op.dst.name});
+            try print_val(op.src, writer);
+        },
+        .label => |op| {
+            try writer.print("{s}:", .{op.name});
         },
     }
+    try writer.writeByte('\n');
 }
 
 pub fn print_val(val: tacky.Val, writer: std.fs.File.Writer) !void {
