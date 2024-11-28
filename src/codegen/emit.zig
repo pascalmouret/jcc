@@ -10,8 +10,11 @@ const PrettyEmitter = struct {
     pub fn emit_comment(self: PrettyEmitter, comptime fmt: []const u8, args: anytype) !void {
         self.writer.print("# " ++ fmt, args);
     }
-    fn print_instruction(self: PrettyEmitter, instruction: []const u8, operands: anytype) !void {
-        try self.writer.print("    {s} ", .{instruction});
+    fn print_instruction(self: PrettyEmitter, comptime instruction: []const u8, operands: anytype) !void {
+        try self.print_formatted_instruction(instruction, .{}, operands);
+    }
+    fn print_formatted_instruction(self: PrettyEmitter, comptime instruction: []const u8, args: anytype, operands: anytype) !void {
+        try self.writer.print("    " ++ instruction ++ " ", args);
 
         switch (operands.len) {
             0 => {},
@@ -34,14 +37,23 @@ const PrettyEmitter = struct {
                 try self.writer.print("-{d}(%rbp)", .{stack.offset});
             },
             .register => |register| {
-                switch (register) {
-                    .ax => try self.writer.writeAll("%eax"),
-                    .dx => try self.writer.writeAll("%edx"),
-                    .cl => try self.writer.writeAll("%cl"),
-                    .r10 => try self.writer.writeAll("%r10d"),
-                    .r11 => try self.writer.writeAll("%r11d"),
-                    .rsp => try self.writer.writeAll("%rsp"),
-                    .rbp => try self.writer.writeAll("%rbp"),
+                switch (register.name) {
+                    .ax, .dx, .cx => {
+                        switch (register.size) {
+                            1 => try self.writer.print("%{c}l", .{@tagName(register.name)[0]}),
+                            4 => try self.writer.print("%e{s}", .{@tagName(register.name)}),
+                            else => unreachable,
+                        }
+                    },
+                    .r10, .r11 => {
+                        const suffix: u8 = switch (register.size) {
+                            1 => 'b',
+                            4 => 'd',
+                            else => unreachable,
+                        };
+                        try self.writer.print("%{s}{c}", .{ @tagName(register.name), suffix });
+                    },
+                    .rsp, .rbp => try self.writer.print("%{s}", .{@tagName(register.name)}),
                 }
             },
             .immediate => |immediate| {
@@ -67,7 +79,8 @@ const PrettyEmitter = struct {
     fn emit_instruction(self: PrettyEmitter, instruction: x86.Instruction) !void {
         switch (instruction) {
             .mov => |mov| {
-                if (mov.dst == .register and mov.dst.register == .cl) {
+                //  TODO: do this cleanly
+                if (mov.dst == .register and mov.dst.register.size == 1) {
                     try self.print_instruction("movb", .{ mov.src, mov.dst });
                 } else {
                     try self.print_instruction("movl", .{ mov.src, mov.dst });
@@ -87,19 +100,29 @@ const PrettyEmitter = struct {
             },
             .binary => |binary| {
                 switch (binary.operator) {
-                    .add => try self.print_instruction("addl", .{ binary.operand1, binary.operand2 }),
-                    .subtract => try self.print_instruction("subl", .{ binary.operand1, binary.operand2 }),
-                    .multiply => try self.print_instruction("imull", .{ binary.operand1, binary.operand2 }),
-                    .bitwise_and => try self.print_instruction("andl", .{ binary.operand1, binary.operand2 }),
-                    .bitwise_or => try self.print_instruction("orl", .{ binary.operand1, binary.operand2 }),
-                    .xor => try self.print_instruction("xorl", .{ binary.operand1, binary.operand2 }),
-                    .shift_left => try self.print_instruction("sall", .{ binary.operand1, binary.operand2 }),
-                    .shift_right => try self.print_instruction("sarl", .{ binary.operand1, binary.operand2 }),
+                    .add => try self.print_instruction("addl", .{ binary.src1, binary.src2 }),
+                    .subtract => try self.print_instruction("subl", .{ binary.src1, binary.src2 }),
+                    .multiply => try self.print_instruction("imull", .{ binary.src1, binary.src2 }),
+                    .bitwise_and => try self.print_instruction("andl", .{ binary.src1, binary.src2 }),
+                    .bitwise_or => try self.print_instruction("orl", .{ binary.src1, binary.src2 }),
+                    .xor => try self.print_instruction("xorl", .{ binary.src1, binary.src2 }),
+                    .shift_left => try self.print_instruction("sall", .{ binary.src1, binary.src2 }),
+                    .shift_right => try self.print_instruction("sarl", .{ binary.src1, binary.src2 }),
                     else => unreachable,
                 }
             },
             .idiv => |idiv| try self.print_instruction("idivl", .{idiv.operand}),
             .cdq => try self.print_instruction("cdq", .{}),
+            .jmp => |jmp| {
+                if (jmp.on) |on| {
+                    try self.print_formatted_instruction("j{s} L{s}", .{ @tagName(on), jmp.label }, .{});
+                } else {
+                    try self.print_formatted_instruction("jmp L{s}", .{jmp.label}, .{});
+                }
+            },
+            .set_cc => |set_cc| try self.print_formatted_instruction("set{s}", .{@tagName(set_cc.code)}, .{set_cc.dst}),
+            .label => |label| try self.writer.print("    L{s}:\n", .{label.name}),
+            .cmp => |cmp| try self.print_instruction("cmpl", .{ cmp.src1, cmp.src2 }),
             .allocate_stack => |allocate| try self.print_instruction("subq", .{ allocate.operand, x86.Operand.register(.rsp) }),
         }
     }

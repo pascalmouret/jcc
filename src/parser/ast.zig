@@ -368,9 +368,9 @@ pub const BinaryOperator = enum {
             .not_equal => 30,
             .bitwise_and => 25,
             .xor => 20,
-            .bitwise_or => 20,
-            .logical_and => 15,
-            .logical_or => 15,
+            .bitwise_or => 15,
+            .logical_and => 10,
+            .logical_or => 10,
         };
     }
 };
