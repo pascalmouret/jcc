@@ -144,7 +144,7 @@ pub const Instruction = union(enum) {
     }
 };
 
-const Ret = struct {
+pub const Ret = struct {
     val: Val,
 };
 
@@ -192,7 +192,7 @@ pub const Val = union(enum) {
 };
 
 const Constant = struct {
-    value: u32,
+    value: i32,
 };
 
 const Tmp = struct {

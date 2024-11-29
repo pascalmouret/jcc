@@ -5,8 +5,7 @@ const parseOptions = @import("./cli/options.zig").parseOptions;
 const lex = @import("./lexer.zig").lexer;
 const ast = @import("./parser.zig").ast;
 const astPrint = @import("./parser.zig").printProgram;
-const x86 = @import("./codegen.zig").x86;
-const emit_x86_program = @import("codegen.zig").emitX86Program;
+const codegen = @import("./codegen.zig");
 const tacky = @import("./tacky.zig").tacky;
 const tackyPrint = @import("./tacky.zig").printProgram;
 
@@ -57,13 +56,13 @@ pub fn runCompiler(allocator: std.mem.Allocator) !void {
 
     if (options.stage == .tacky) return;
 
-    const x86_program = try x86.programToX86(allocator, tacky_program);
-    defer x86_program.deinit();
+    const assembly_program = try codegen.program.fromTacky(allocator, tacky_program);
+    defer assembly_program.deinit();
 
     if (options.stage == .codegen) return;
 
     const output_file = try std.fs.cwd().createFile(options.output_file.?, .{});
     defer output_file.close();
 
-    try emit_x86_program(x86_program, output_file.writer());
+    try codegen.emitProgram(assembly_program, output_file.writer());
 }

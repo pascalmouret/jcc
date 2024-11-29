@@ -1,2 +1,2 @@
-pub const x86 = @import("codegen/x86.zig");
-pub const emitX86Program = @import("codegen/emit.zig").emitX86Program;
+pub const program = @import("codegen/program.zig");
+pub const emitProgram = @import("codegen/emit.zig").emitProgram;

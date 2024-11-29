@@ -253,10 +253,10 @@ pub const Factor = union(enum) {
 };
 
 const Constant = struct {
-    value: u32,
+    value: i32,
     pub fn parse(context: *ParserContext) !Constant {
         const constant = try context.getA(.constant);
-        const as_int = std.fmt.parseInt(u32, constant.bytes, 10) catch {
+        const as_int = std.fmt.parseInt(i32, constant.bytes, 10) catch {
             return parserError(ParserError.InvalidConstant, constant.line, constant.character, "'{s}' is not a valid constant", .{constant.bytes});
         };
         return Constant{ .value = as_int };

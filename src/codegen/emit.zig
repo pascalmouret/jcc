@@ -1,6 +1,13 @@
 const std = @import("std");
 
-const x86 = @import("./x86.zig");
+const Program = @import("./program.zig").Program;
+const FunctionDefinition = @import("./program.zig").FunctionDefinition;
+const Operand = @import("./instruction.zig").Operand;
+const Instruction = @import("instruction.zig").Instruction;
+
+pub fn emitProgram(program: Program, writer: std.fs.File.Writer) !void {
+    try PrettyEmitter.init(writer).emitProgram(program);
+}
 
 const PrettyEmitter = struct {
     writer: std.fs.File.Writer,
@@ -28,7 +35,7 @@ const PrettyEmitter = struct {
 
         try self.writer.writeByte('\n');
     }
-    fn printOperand(self: PrettyEmitter, operand: x86.Operand) !void {
+    fn printOperand(self: PrettyEmitter, operand: Operand) !void {
         switch (operand) {
             .stack => |stack| {
                 try self.writer.print("-{d}(%rbp)", .{stack.offset});
@@ -59,21 +66,21 @@ const PrettyEmitter = struct {
             .pseudo => unreachable,
         }
     }
-    pub fn emitProgram(self: PrettyEmitter, program: x86.Program) !void {
+    pub fn emitProgram(self: PrettyEmitter, program: Program) !void {
         try self.emitFunctionDefinition(program.function_definition);
     }
-    fn emitFunctionDefinition(self: PrettyEmitter, function_definition: x86.FunctionDefinition) !void {
+    fn emitFunctionDefinition(self: PrettyEmitter, function_definition: FunctionDefinition) !void {
         try self.writer.print(
             "   .globl _{s}\n_{s}:\n",
             .{ function_definition.name, function_definition.name },
         );
-        try self.printInstruction("pushq", .{x86.Operand.register(.rbp)});
-        try self.printInstruction("movq", .{ x86.Operand.register(.rsp), x86.Operand.register(.rbp) });
+        try self.printInstruction("pushq", .{Operand.register(.rbp)});
+        try self.printInstruction("movq", .{ Operand.register(.rsp), Operand.register(.rbp) });
         for (function_definition.instructions) |instruction| {
             try self.emitInstruction(instruction);
         }
     }
-    fn emitInstruction(self: PrettyEmitter, instruction: x86.Instruction) !void {
+    fn emitInstruction(self: PrettyEmitter, instruction: Instruction) !void {
         switch (instruction) {
             .mov => |mov| {
                 //  TODO: do this cleanly
@@ -84,8 +91,8 @@ const PrettyEmitter = struct {
                 }
             },
             .ret => {
-                try self.printInstruction("movq", .{ x86.Operand.register(.rbp), x86.Operand.register(.rsp) });
-                try self.printInstruction("popq", .{x86.Operand.register(.rbp)});
+                try self.printInstruction("movq", .{ Operand.register(.rbp), Operand.register(.rsp) });
+                try self.printInstruction("popq", .{Operand.register(.rbp)});
                 try self.printInstruction("ret", .{});
             },
             .unary => |unary| {
@@ -120,11 +127,7 @@ const PrettyEmitter = struct {
             .set_cc => |set_cc| try self.printFormattedInstruction("set{s}", .{@tagName(set_cc.code)}, .{set_cc.dst}),
             .label => |label| try self.writer.print("    L{s}:\n", .{label.name}),
             .cmp => |cmp| try self.printInstruction("cmpl", .{ cmp.src1, cmp.src2 }),
-            .allocate_stack => |allocate| try self.printInstruction("subq", .{ allocate.operand, x86.Operand.register(.rsp) }),
+            .allocate_stack => |allocate| try self.printInstruction("subq", .{ allocate.operand, Operand.register(.rsp) }),
         }
     }
 };
-
-pub fn emitX86Program(program: x86.Program, writer: std.fs.File.Writer) !void {
-    try PrettyEmitter.init(writer).emitProgram(program);
-}
