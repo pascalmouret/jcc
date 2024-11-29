@@ -55,7 +55,7 @@ pub const FunctionDefinition = struct {
                     try list.append(Instruction.unary(unary.operator, try unary.operand.stackIfPseudo(&offset_map)));
                 },
                 .binary => |binary| {
-                    try list.append(Instruction.binary(binary.operator, try binary.src1.stackIfPseudo(&offset_map), try binary.src2.stackIfPseudo(&offset_map)));
+                    try list.append(Instruction.binary(binary.operator, try binary.src.stackIfPseudo(&offset_map), try binary.dst.stackIfPseudo(&offset_map)));
                 },
                 .idiv => |idiv| {
                     try list.append(Instruction.idiv(try idiv.operand.stackIfPseudo(&offset_map)));
@@ -64,7 +64,7 @@ pub const FunctionDefinition = struct {
                     try list.append(Instruction.setCC(set_cc.code, try set_cc.dst.stackIfPseudo(&offset_map)));
                 },
                 .cmp => |cmp| {
-                    try list.append(Instruction.cmp(try cmp.src1.stackIfPseudo(&offset_map), try cmp.src2.stackIfPseudo(&offset_map)));
+                    try list.append(Instruction.cmp(try cmp.src.stackIfPseudo(&offset_map), try cmp.dst.stackIfPseudo(&offset_map)));
                 },
                 else => try list.append(instruction),
             }
@@ -96,35 +96,35 @@ pub const FunctionDefinition = struct {
                     }
                 },
                 .binary => |binary| {
-                    if ((binary.operator == .add or binary.operator == .subtract or binary.operator == .bitwise_and or binary.operator == .bitwise_or or binary.operator == .xor) and (binary.src1 == .stack and binary.src2 == .stack)) {
-                        try list.append(Instruction.mov(binary.src1, Operand.register(.r10)));
-                        try list.append(Instruction.binary(binary.operator, Operand.register(.r10), binary.src2));
+                    if ((binary.operator == .add or binary.operator == .subtract or binary.operator == .bitwise_and or binary.operator == .bitwise_or or binary.operator == .xor) and (binary.src == .stack and binary.dst == .stack)) {
+                        try list.append(Instruction.mov(binary.src, Operand.register(.r10)));
+                        try list.append(Instruction.binary(binary.operator, Operand.register(.r10), binary.dst));
                         continue;
                     }
 
-                    if ((binary.operator == .shift_left or binary.operator == .shift_right) and binary.src1 != .immediate) {
-                        try list.append(Instruction.mov(binary.src1, Operand.sizedRegister(.cx, 1)));
-                        try list.append(Instruction.binary(binary.operator, Operand.sizedRegister(.cx, 1), binary.src2));
+                    if ((binary.operator == .shift_left or binary.operator == .shift_right) and binary.src != .immediate) {
+                        try list.append(Instruction.mov(binary.src, Operand.sizedRegister(.cx, 1)));
+                        try list.append(Instruction.binary(binary.operator, Operand.sizedRegister(.cx, 1), binary.dst));
                         continue;
                     }
 
                     if (binary.operator == .multiply) {
-                        try list.append(Instruction.mov(binary.src2, Operand.register(.r11)));
-                        try list.append(Instruction.binary(binary.operator, binary.src1, Operand.register(.r11)));
-                        try list.append(Instruction.mov(Operand.register(.r11), binary.src2));
+                        try list.append(Instruction.mov(binary.dst, Operand.register(.r11)));
+                        try list.append(Instruction.binary(binary.operator, binary.src, Operand.register(.r11)));
+                        try list.append(Instruction.mov(Operand.register(.r11), binary.dst));
                         continue;
                     }
                 },
                 .cmp => |cmp| {
-                    if (cmp.src1 == .stack and cmp.src2 == .stack) {
-                        try list.append(Instruction.mov(cmp.src1, Operand.register(.r10)));
-                        try list.append(Instruction.cmp(Operand.register(.r10), cmp.src2));
+                    if (cmp.src == .stack and cmp.dst == .stack) {
+                        try list.append(Instruction.mov(cmp.src, Operand.register(.r10)));
+                        try list.append(Instruction.cmp(Operand.register(.r10), cmp.dst));
                         continue;
                     }
 
-                    if (cmp.src2 == .immediate) {
-                        try list.append(Instruction.mov(cmp.src2, Operand.register(.r11)));
-                        try list.append(Instruction.cmp(cmp.src1, Operand.register(.r11)));
+                    if (cmp.dst == .immediate) {
+                        try list.append(Instruction.mov(cmp.dst, Operand.register(.r11)));
+                        try list.append(Instruction.cmp(cmp.src, Operand.register(.r11)));
                         continue;
                     }
                 },

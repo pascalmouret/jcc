@@ -104,14 +104,14 @@ const PrettyEmitter = struct {
             },
             .binary => |binary| {
                 switch (binary.operator) {
-                    .add => try self.printInstruction("addl", .{ binary.src1, binary.src2 }),
-                    .subtract => try self.printInstruction("subl", .{ binary.src1, binary.src2 }),
-                    .multiply => try self.printInstruction("imull", .{ binary.src1, binary.src2 }),
-                    .bitwise_and => try self.printInstruction("andl", .{ binary.src1, binary.src2 }),
-                    .bitwise_or => try self.printInstruction("orl", .{ binary.src1, binary.src2 }),
-                    .xor => try self.printInstruction("xorl", .{ binary.src1, binary.src2 }),
-                    .shift_left => try self.printInstruction("sall", .{ binary.src1, binary.src2 }),
-                    .shift_right => try self.printInstruction("sarl", .{ binary.src1, binary.src2 }),
+                    .add => try self.printInstruction("addl", .{ binary.src, binary.dst }),
+                    .subtract => try self.printInstruction("subl", .{ binary.src, binary.dst }),
+                    .multiply => try self.printInstruction("imull", .{ binary.src, binary.dst }),
+                    .bitwise_and => try self.printInstruction("andl", .{ binary.src, binary.dst }),
+                    .bitwise_or => try self.printInstruction("orl", .{ binary.src, binary.dst }),
+                    .xor => try self.printInstruction("xorl", .{ binary.src, binary.dst }),
+                    .shift_left => try self.printInstruction("sall", .{ binary.src, binary.dst }),
+                    .shift_right => try self.printInstruction("sarl", .{ binary.src, binary.dst }),
                     else => unreachable,
                 }
             },
@@ -126,7 +126,7 @@ const PrettyEmitter = struct {
             },
             .set_cc => |set_cc| try self.printFormattedInstruction("set{s}", .{@tagName(set_cc.code)}, .{set_cc.dst}),
             .label => |label| try self.writer.print("    L{s}:\n", .{label.name}),
-            .cmp => |cmp| try self.printInstruction("cmpl", .{ cmp.src1, cmp.src2 }),
+            .cmp => |cmp| try self.printInstruction("cmpl", .{ cmp.src, cmp.dst }),
             .allocate_stack => |allocate| try self.printInstruction("subq", .{ allocate.operand, Operand.register(.rsp) }),
         }
     }

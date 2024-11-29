@@ -26,8 +26,8 @@ pub const Instruction = union(enum) {
     pub fn unary(operator: ast.UnaryOperator, operand: Operand) Instruction {
         return Instruction{ .unary = Unary{ .operator = operator, .operand = operand } };
     }
-    pub fn binary(operator: ast.BinaryOperator, operand1: Operand, operand2: Operand) Instruction {
-        return Instruction{ .binary = Binary{ .operator = operator, .src1 = operand1, .src2 = operand2 } };
+    pub fn binary(operator: ast.BinaryOperator, src: Operand, dst: Operand) Instruction {
+        return Instruction{ .binary = Binary{ .operator = operator, .src = src, .dst = dst } };
     }
     pub fn idiv(operand: Operand) Instruction {
         return Instruction{ .idiv = Idiv{ .operand = operand } };
@@ -35,8 +35,8 @@ pub const Instruction = union(enum) {
     pub fn cdq() Instruction {
         return Instruction{ .cdq = Cdq{} };
     }
-    pub fn cmp(src1: Operand, src2: Operand) Instruction {
-        return Instruction{ .cmp = Cmp{ .src1 = src1, .src2 = src2 } };
+    pub fn cmp(src: Operand, dst: Operand) Instruction {
+        return Instruction{ .cmp = Cmp{ .src = src, .dst = dst } };
     }
     pub fn jmp(dst_label: []u8, on: ?ConditionCode) Instruction {
         return Instruction{ .jmp = Jmp{ .label = dst_label, .on = on } };
@@ -66,8 +66,8 @@ const Unary = struct {
 
 const Binary = struct {
     operator: ast.BinaryOperator,
-    src1: Operand,
-    src2: Operand,
+    src: Operand,
+    dst: Operand,
 };
 
 const Idiv = struct {
@@ -77,8 +77,8 @@ const Idiv = struct {
 const Cdq = struct {};
 
 const Cmp = struct {
-    src1: Operand,
-    src2: Operand,
+    src: Operand,
+    dst: Operand,
 };
 
 pub const ConditionCode = enum {
