@@ -3,17 +3,17 @@ const std = @import("std");
 const tacky = @import("../tacky.zig").tacky;
 const ast = @import("../parser.zig").ast;
 
-pub fn program_to_x86(allocator: std.mem.Allocator, program: tacky.Program) !Program {
-    return try Program.from_program(allocator, program);
+pub fn programToX86(allocator: std.mem.Allocator, program: tacky.Program) !Program {
+    return try Program.fromProgram(allocator, program);
 }
 
 pub const Program = struct {
     allocator: std.mem.Allocator,
     function_definition: FunctionDefinition,
-    pub fn from_program(allocator: std.mem.Allocator, program: tacky.Program) !Program {
+    pub fn fromProgram(allocator: std.mem.Allocator, program: tacky.Program) !Program {
         return Program{
             .allocator = allocator,
-            .function_definition = try FunctionDefinition.from_function_definition(allocator, program.function_definition),
+            .function_definition = try FunctionDefinition.fromFunctionDefinition(allocator, program.function_definition),
         };
     }
     pub fn deinit(self: Program) void {
@@ -24,25 +24,25 @@ pub const Program = struct {
 pub const FunctionDefinition = struct {
     name: []u8,
     instructions: []Instruction,
-    pub fn from_function_definition(allocator: std.mem.Allocator, function_definition: tacky.FunctionDefinition) !FunctionDefinition {
+    pub fn fromFunctionDefinition(allocator: std.mem.Allocator, function_definition: tacky.FunctionDefinition) !FunctionDefinition {
         var list = std.ArrayList(Instruction).init(allocator);
         defer list.deinit();
 
         for (function_definition.instructions) |instruction| {
-            try Instruction.append_from_instruction(&list, instruction);
+            try Instruction.appendFromInstruction(&list, instruction);
         }
 
         const initial = try list.toOwnedSlice();
         defer allocator.free(initial);
 
-        const stacked = try FunctionDefinition.replace_pseudo(allocator, initial);
+        const stacked = try FunctionDefinition.replacePseudo(allocator, initial);
         defer allocator.free(stacked);
 
-        const final = try FunctionDefinition.fix_instructions(allocator, stacked);
+        const final = try FunctionDefinition.fixInstructions(allocator, stacked);
 
         return FunctionDefinition{ .name = function_definition.name, .instructions = final };
     }
-    pub fn replace_pseudo(allocator: std.mem.Allocator, instructions: []const Instruction) ![]Instruction {
+    pub fn replacePseudo(allocator: std.mem.Allocator, instructions: []const Instruction) ![]Instruction {
         var offset_map = std.StringHashMap(usize).init(allocator);
         defer offset_map.deinit();
 
@@ -52,33 +52,33 @@ pub const FunctionDefinition = struct {
         for (instructions) |instruction| {
             switch (instruction) {
                 .mov => |mov| {
-                    try list.append(Instruction.mov(try mov.src.stack_if_pseudo(&offset_map), try mov.dst.stack_if_pseudo(&offset_map)));
+                    try list.append(Instruction.mov(try mov.src.stackIfPseudo(&offset_map), try mov.dst.stackIfPseudo(&offset_map)));
                 },
                 .unary => |unary| {
-                    try list.append(Instruction.unary(unary.operator, try unary.operand.stack_if_pseudo(&offset_map)));
+                    try list.append(Instruction.unary(unary.operator, try unary.operand.stackIfPseudo(&offset_map)));
                 },
                 .binary => |binary| {
-                    try list.append(Instruction.binary(binary.operator, try binary.src1.stack_if_pseudo(&offset_map), try binary.src2.stack_if_pseudo(&offset_map)));
+                    try list.append(Instruction.binary(binary.operator, try binary.src1.stackIfPseudo(&offset_map), try binary.src2.stackIfPseudo(&offset_map)));
                 },
                 .idiv => |idiv| {
-                    try list.append(Instruction.idiv(try idiv.operand.stack_if_pseudo(&offset_map)));
+                    try list.append(Instruction.idiv(try idiv.operand.stackIfPseudo(&offset_map)));
                 },
                 .set_cc => |set_cc| {
-                    try list.append(Instruction.set_cc(set_cc.code, try set_cc.dst.stack_if_pseudo(&offset_map)));
+                    try list.append(Instruction.setCC(set_cc.code, try set_cc.dst.stackIfPseudo(&offset_map)));
                 },
                 .cmp => |cmp| {
-                    try list.append(Instruction.cmp(try cmp.src1.stack_if_pseudo(&offset_map), try cmp.src2.stack_if_pseudo(&offset_map)));
+                    try list.append(Instruction.cmp(try cmp.src1.stackIfPseudo(&offset_map), try cmp.src2.stackIfPseudo(&offset_map)));
                 },
                 else => try list.append(instruction),
             }
         }
 
         // TODO: account for sized
-        try list.insert(0, Instruction.allocate_stack(offset_map.count() * 4));
+        try list.insert(0, Instruction.allocateStack(offset_map.count() * 4));
 
         return try list.toOwnedSlice();
     }
-    pub fn fix_instructions(allocator: std.mem.Allocator, instructions: []const Instruction) ![]Instruction {
+    pub fn fixInstructions(allocator: std.mem.Allocator, instructions: []const Instruction) ![]Instruction {
         var list = std.ArrayList(Instruction).init(allocator);
         defer list.deinit();
 
@@ -106,8 +106,8 @@ pub const FunctionDefinition = struct {
                     }
 
                     if ((binary.operator == .shift_left or binary.operator == .shift_right) and binary.src1 != .immediate) {
-                        try list.append(Instruction.mov(binary.src1, Operand.sized_register(.cx, 1)));
-                        try list.append(Instruction.binary(binary.operator, Operand.sized_register(.cx, 1), binary.src2));
+                        try list.append(Instruction.mov(binary.src1, Operand.sizedRegister(.cx, 1)));
+                        try list.append(Instruction.binary(binary.operator, Operand.sizedRegister(.cx, 1), binary.src2));
                         continue;
                     }
 
@@ -156,19 +156,19 @@ pub const Instruction = union(enum) {
     set_cc: SetCC,
     label: Label,
     allocate_stack: AllocateStack,
-    pub fn append_from_instruction(list: *std.ArrayList(Instruction), instruction: tacky.Instruction) !void {
+    pub fn appendFromInstruction(list: *std.ArrayList(Instruction), instruction: tacky.Instruction) !void {
         switch (instruction) {
             .ret => |r| {
-                try list.append(Instruction.mov(Operand.from_val(r.val), Operand.register(.ax)));
+                try list.append(Instruction.mov(Operand.fromVal(r.val), Operand.register(.ax)));
                 try list.append(Instruction.ret());
             },
             .unary => |u| {
                 if (u.operator == .logical_not) {
-                    try list.append(Instruction.cmp(Operand.immediate(0), Operand.from_val(u.src)));
+                    try list.append(Instruction.cmp(Operand.immediate(0), Operand.fromVal(u.src)));
                     try list.append(Instruction.mov(Operand.immediate(0), Operand.pseudo(u.dst.name)));
-                    try list.append(Instruction.set_cc(.e, Operand.pseudo(u.dst.name)));
+                    try list.append(Instruction.setCC(.e, Operand.pseudo(u.dst.name)));
                 } else {
-                    try list.append(Instruction.mov(Operand.from_val(u.src), Operand.pseudo(u.dst.name)));
+                    try list.append(Instruction.mov(Operand.fromVal(u.src), Operand.pseudo(u.dst.name)));
                     try list.append(Instruction.unary(u.operator, Operand.pseudo(u.dst.name)));
                 }
             },
@@ -184,14 +184,14 @@ pub const Instruction = union(enum) {
                             .not_equal => .ne,
                             else => unreachable,
                         };
-                        try list.append(Instruction.cmp(Operand.from_val(b.src2), Operand.from_val(b.src1)));
+                        try list.append(Instruction.cmp(Operand.fromVal(b.src2), Operand.fromVal(b.src1)));
                         try list.append(Instruction.mov(Operand.immediate(0), Operand.pseudo(b.dst.name)));
-                        try list.append(Instruction.set_cc(condition, Operand.pseudo(b.dst.name)));
+                        try list.append(Instruction.setCC(condition, Operand.pseudo(b.dst.name)));
                     },
                     .divide, .modulo => {
-                        try list.append(Instruction.mov(Operand.from_val(b.src1), Operand.register(.ax)));
+                        try list.append(Instruction.mov(Operand.fromVal(b.src1), Operand.register(.ax)));
                         try list.append(Instruction.cdq());
-                        try list.append(Instruction.idiv(Operand.from_val(b.src2)));
+                        try list.append(Instruction.idiv(Operand.fromVal(b.src2)));
 
                         if (b.operator == .divide) {
                             try list.append(Instruction.mov(Operand.register(.ax), Operand.pseudo(b.dst.name)));
@@ -200,8 +200,8 @@ pub const Instruction = union(enum) {
                         }
                     },
                     else => {
-                        try list.append(Instruction.mov(Operand.from_val(b.src1), Operand.pseudo(b.dst.name)));
-                        try list.append(Instruction.binary(b.operator, Operand.from_val(b.src2), Operand.pseudo(b.dst.name)));
+                        try list.append(Instruction.mov(Operand.fromVal(b.src1), Operand.pseudo(b.dst.name)));
+                        try list.append(Instruction.binary(b.operator, Operand.fromVal(b.src2), Operand.pseudo(b.dst.name)));
                     },
                 }
             },
@@ -211,7 +211,7 @@ pub const Instruction = union(enum) {
                         .zero => .e,
                         .not_zero => .ne,
                     };
-                    try list.append(Instruction.cmp(Operand.immediate(0), Operand.from_val(condition.val)));
+                    try list.append(Instruction.cmp(Operand.immediate(0), Operand.fromVal(condition.val)));
                     try list.append(Instruction.jmp(j.label, on));
                 } else {
                     try list.append(Instruction.jmp(j.label, null));
@@ -221,7 +221,7 @@ pub const Instruction = union(enum) {
                 try list.append(Instruction.label(l.name));
             },
             .copy => |c| {
-                try list.append(Instruction.mov(Operand.from_val(c.src), Operand.pseudo(c.dst.name)));
+                try list.append(Instruction.mov(Operand.fromVal(c.src), Operand.pseudo(c.dst.name)));
             },
         }
     }
@@ -249,13 +249,13 @@ pub const Instruction = union(enum) {
     pub fn jmp(dst_label: []u8, on: ?ConditionCode) Instruction {
         return Instruction{ .jmp = Jmp{ .label = dst_label, .on = on } };
     }
-    pub fn set_cc(code: ConditionCode, dst: Operand) Instruction {
+    pub fn setCC(code: ConditionCode, dst: Operand) Instruction {
         return Instruction{ .set_cc = SetCC{ .code = code, .dst = dst.sized(1) } };
     }
     pub fn label(name: []u8) Instruction {
         return Instruction{ .label = Label{ .name = name } };
     }
-    pub fn allocate_stack(size: isize) Instruction {
+    pub fn allocateStack(size: isize) Instruction {
         return Instruction{ .allocate_stack = AllocateStack{ .operand = Operand.immediate(size) } };
     }
 };
@@ -321,20 +321,20 @@ pub const Operand = union(enum) {
     immediate: Immediate,
     pseudo: Pseudo,
     stack: Stack,
-    pub fn from_val(val: tacky.Val) Operand {
+    pub fn fromVal(val: tacky.Val) Operand {
         switch (val) {
             .constant => |c| return Operand.immediate(c.value),
             .tmp => |t| return Operand.pseudo(t.name),
         }
     }
-    pub fn stack_if_pseudo(self: Operand, map: *std.StringHashMap(usize)) !Operand {
+    pub fn stackIfPseudo(self: Operand, map: *std.StringHashMap(usize)) !Operand {
         switch (self) {
             .pseudo => |p| {
                 if (map.get(p.name)) |offset| {
                     return Operand.stack(offset);
                 } else {
                     try map.put(p.name, (map.count() + 1) * 4);
-                    return self.stack_if_pseudo(map);
+                    return self.stackIfPseudo(map);
                 }
             },
             else => return self,
@@ -352,7 +352,7 @@ pub const Operand = union(enum) {
     pub fn register(reg: RegisterName) Operand {
         return Operand{ .register = Register{ .name = reg } };
     }
-    pub fn sized_register(reg: RegisterName, size: usize) Operand {
+    pub fn sizedRegister(reg: RegisterName, size: usize) Operand {
         return Operand{ .register = Register{ .name = reg, .size = size } };
     }
     pub fn pseudo(name: []u8) Operand {

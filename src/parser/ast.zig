@@ -49,7 +49,7 @@ const ParserContext = struct {
     pub fn getA(self: *ParserContext, comptime kind: TokenKind) !Token {
         const next_token = try self.next();
         if (next_token.kind != kind) {
-            return unexpected_token(next_token, &[1]TokenKind{kind});
+            return unexpectedToken(next_token, &[1]TokenKind{kind});
         } else {
             return next_token;
         }
@@ -64,7 +64,7 @@ const ParserContext = struct {
             }
         }
 
-        return unexpected_token(next_token, kinds);
+        return unexpectedToken(next_token, kinds);
     }
 
     pub fn consumeNext(self: *ParserContext) !void {
@@ -91,7 +91,7 @@ const ParserContext = struct {
     }
 };
 
-pub fn tokens_to_program(allocator: std.mem.Allocator, tokens: []Token) !Program {
+pub fn tokensToProgram(allocator: std.mem.Allocator, tokens: []Token) !Program {
     var context = ParserContext.init(allocator, tokens);
     return try Program.parse(&context);
 }
@@ -145,7 +145,7 @@ pub const Statement = union(enum) {
             .ret => return Statement{ .ret = try Ret.parse(context) },
             else => {
                 const token = try context.next();
-                return parser_error(
+                return parserError(
                     ParserError.ExpectedStatement,
                     token.line,
                     token.character,
@@ -177,23 +177,23 @@ pub const Expression = union(enum) {
     binary: Binary,
     factor: *Factor,
     pub fn parse(context: *ParserContext, min_precedence: usize) (ParserError || error{OutOfMemory})!*Expression {
-        var left = try (Expression{ .factor = try Factor.parse(context) }).to_owned(context.allocator);
+        var left = try (Expression{ .factor = try Factor.parse(context) }).toOwned(context.allocator);
         errdefer left.deinit(context.allocator);
 
         while (context.nextIsOneOf(&BinaryOperator.token_kinds)) {
-            const operator = try BinaryOperator.peek_parse(context);
+            const operator = try BinaryOperator.peekParse(context);
 
             if (operator.precedence() < min_precedence) break;
             try context.consumeNext();
 
             const right = try Expression.parse(context, operator.precedence() + 1);
             const old_left = left;
-            left = try (Expression{ .binary = Binary{ .operator = operator, .left = old_left, .right = right } }).to_owned(context.allocator);
+            left = try (Expression{ .binary = Binary{ .operator = operator, .left = old_left, .right = right } }).toOwned(context.allocator);
         }
 
         return left;
     }
-    pub fn to_owned(self: Expression, allocator: std.mem.Allocator) !*Expression {
+    pub fn toOwned(self: Expression, allocator: std.mem.Allocator) !*Expression {
         const result = try allocator.create(Expression);
         result.* = self;
         return result;
@@ -214,20 +214,20 @@ pub const Factor = union(enum) {
     pub fn parse(context: *ParserContext) (ParserError || error{OutOfMemory})!*Factor {
         switch (try context.peekKind()) {
             .constant => {
-                return (Factor{ .constant = try Constant.parse(context) }).to_owned(context.allocator);
+                return (Factor{ .constant = try Constant.parse(context) }).toOwned(context.allocator);
             },
             .hyphen, .tilde, .exclamation_point => {
-                return (Factor{ .unary = try Unary.parse(context) }).to_owned(context.allocator);
+                return (Factor{ .unary = try Unary.parse(context) }).toOwned(context.allocator);
             },
             .open_parenthesis => {
                 try context.consumeA(.open_parenthesis);
                 const expression = try Expression.parse(context, 0);
                 try context.consumeA(.close_parenthesis);
-                return (Factor{ .expression = expression }).to_owned(context.allocator);
+                return (Factor{ .expression = expression }).toOwned(context.allocator);
             },
             else => {
                 const token = try context.next();
-                return parser_error(
+                return parserError(
                     ParserError.ExpectedExpression,
                     token.line,
                     token.character,
@@ -237,7 +237,7 @@ pub const Factor = union(enum) {
             },
         }
     }
-    pub fn to_owned(self: Factor, allocator: std.mem.Allocator) !*Factor {
+    pub fn toOwned(self: Factor, allocator: std.mem.Allocator) !*Factor {
         const result = try allocator.create(Factor);
         result.* = self;
         return result;
@@ -257,7 +257,7 @@ const Constant = struct {
     pub fn parse(context: *ParserContext) !Constant {
         const constant = try context.getA(.constant);
         const as_int = std.fmt.parseInt(u32, constant.bytes, 10) catch {
-            return parser_error(ParserError.InvalidConstant, constant.line, constant.character, "'{s}' is not a valid constant", .{constant.bytes});
+            return parserError(ParserError.InvalidConstant, constant.line, constant.character, "'{s}' is not a valid constant", .{constant.bytes});
         };
         return Constant{ .value = as_int };
     }
@@ -327,7 +327,7 @@ pub const BinaryOperator = enum {
         .logical_or,
     };
 
-    pub fn peek_parse(context: *ParserContext) !BinaryOperator {
+    pub fn peekParse(context: *ParserContext) !BinaryOperator {
         const next_kind = try context.peekKind();
         return switch (next_kind) {
             .plus => .add,
@@ -379,7 +379,7 @@ const Binary = struct {
     operator: BinaryOperator,
     left: *Expression,
     right: *Expression,
-    pub fn can_short_circuit(self: Binary) bool {
+    pub fn canShortCircuit(self: Binary) bool {
         return self.operator == .logical_or or self.operator == .logical_and;
     }
     pub fn deinit(self: Binary, allocator: std.mem.Allocator) void {
@@ -388,7 +388,7 @@ const Binary = struct {
     }
 };
 
-fn parser_error(
+fn parserError(
     err: ParserError,
     line: usize,
     character: usize,
@@ -400,21 +400,21 @@ fn parser_error(
 }
 
 // TODO: fix broken error output
-fn unexpected_token(
+fn unexpectedToken(
     actual: Token,
     comptime expected: []const TokenKind,
 ) ParserError {
     if (expected.len == 1) {
-        return parser_error(ParserError.UnexpectedToken, actual.line, actual.character, "Expected a '{s}', found '{s}'", .{ @tagName(expected[0]), actual.bytes });
+        return parserError(ParserError.UnexpectedToken, actual.line, actual.character, "Expected a '{s}', found '{s}'", .{ @tagName(expected[0]), actual.bytes });
     } else {
-        return parser_error(ParserError.UnexpectedToken, actual.line, actual.character, "Expected one of '{s}', found '{s}'", .{ tag_list(expected), actual.bytes });
+        return parserError(ParserError.UnexpectedToken, actual.line, actual.character, "Expected one of '{s}', found '{s}'", .{ tagList(expected), actual.bytes });
     }
 }
 
-fn tag_list(
+fn tagList(
     comptime kinds: []const TokenKind,
-) [kinds_list_length(kinds)]u8 {
-    var bfr: [kinds_list_length(kinds)]u8 = undefined;
+) [kindsListLength(kinds)]u8 {
+    var bfr: [kindsListLength(kinds)]u8 = undefined;
     var index: usize = 0;
     for (kinds) |kind| {
         if (index != 0) {
@@ -427,7 +427,7 @@ fn tag_list(
     return bfr;
 }
 
-fn kinds_list_length(
+fn kindsListLength(
     comptime kinds: []const TokenKind,
 ) comptime_int {
     var len = (kinds.len - 1) * 2;

@@ -17,7 +17,7 @@ pub const Stage = enum {
     full,
 };
 
-pub fn parse_options(opts: []const [:0]u8) !Options {
+pub fn parseOptions(opts: []const [:0]u8) !Options {
     var file: ?[:0]const u8 = null;
     var stage: Stage = .full;
     var output_file: ?[:0]const u8 = null;

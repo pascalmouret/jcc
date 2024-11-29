@@ -96,7 +96,7 @@ const LexerResult = struct {
     }
 };
 
-pub fn bytes_to_tokens(allocator: std.mem.Allocator, bytes: []u8) !LexerResult {
+pub fn bytesToTokens(allocator: std.mem.Allocator, bytes: []u8) !LexerResult {
     var tokens = std.ArrayList(Token).init(allocator);
     defer tokens.deinit();
 
@@ -110,40 +110,40 @@ pub fn bytes_to_tokens(allocator: std.mem.Allocator, bytes: []u8) !LexerResult {
     while (index < bytes.len) : (index += 1) {
         switch (bytes[index]) {
             '\n' => {
-                try parse_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
+                try parseToken(bytes[token_start..index], &tokens, line, character - (index - token_start));
                 line += 1;
                 character = 0; // will be incremented at the end of the loop
                 token_start = index + 1;
             },
             ' ', '\t' => {
-                try parse_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
+                try parseToken(bytes[token_start..index], &tokens, line, character - (index - token_start));
                 token_start = index + 1;
             },
             '-', '+', '>', '<', '&', '|', '!', '=', '(', ')', '{', '}', '~', '*', '/', '%', ';', '^' => {
                 if (!is_symbol_token) {
-                    try parse_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
+                    try parseToken(bytes[token_start..index], &tokens, line, character - (index - token_start));
                     token_start = index;
                     is_symbol_token = true;
                 }
             },
             'a'...'z', 'A'...'Z', '0'...'9', '_' => {
                 if (is_symbol_token) {
-                    try parse_token(bytes[token_start..index], &tokens, line, character - (index - token_start));
+                    try parseToken(bytes[token_start..index], &tokens, line, character - (index - token_start));
                     token_start = index;
                     is_symbol_token = false;
                 }
             },
-            else => return lexer_error(LexerError.InvalidCharacter, line, character, "'{c}' is not a valid character", .{bytes[index]}),
+            else => return lexerError(LexerError.InvalidCharacter, line, character, "'{c}' is not a valid character", .{bytes[index]}),
         }
 
         character += 1;
     }
 
-    try parse_token(bytes[token_start..], &tokens, line, character - (bytes.len - token_start));
+    try parseToken(bytes[token_start..], &tokens, line, character - (bytes.len - token_start));
     return LexerResult.create(allocator, try tokens.toOwnedSlice());
 }
 
-fn parse_token(
+fn parseToken(
     token: []u8,
     list: *std.ArrayList(Token),
     line: usize,
@@ -156,41 +156,41 @@ fn parse_token(
     switch (token[0]) {
         'a'...'z', 'A'...'Z', '_' => {
             if (keyword_map.get(token)) |kind| {
-                try list.append(create_token(kind, token, line, character));
+                try list.append(createToken(kind, token, line, character));
             } else {
                 for (token) |char| {
-                    if (!is_char(char) and !is_digit(char)) {
-                        return lexer_error(LexerError.InvalidConstant, line, character, "'{s}' is not a valid identifier", .{token});
+                    if (!isChar(char) and !isDigit(char)) {
+                        return lexerError(LexerError.InvalidConstant, line, character, "'{s}' is not a valid identifier", .{token});
                     }
                 }
-                try list.append(create_token(.identifier, token, line, character));
+                try list.append(createToken(.identifier, token, line, character));
             }
         },
         '0'...'9' => {
             for (token) |byte| {
-                if (!is_digit(byte)) {
-                    return lexer_error(LexerError.InvalidConstant, line, character, "'{s}' is not a valid constant", .{token});
+                if (!isDigit(byte)) {
+                    return lexerError(LexerError.InvalidConstant, line, character, "'{s}' is not a valid constant", .{token});
                 }
             }
-            try list.append(create_token(.constant, token, line, character));
+            try list.append(createToken(.constant, token, line, character));
         },
         else => {
             if (symbol_map.get(token)) |kind| {
-                try list.append(create_token(kind, token, line, character));
+                try list.append(createToken(kind, token, line, character));
             } else {
                 for (0..token.len) |iter| {
                     const index = token.len - iter;
-                    parse_token(token[0 .. index - 1], list, line, character - iter) catch continue;
-                    parse_token(token[index - 1 .. token.len], list, line, character - index) catch continue;
+                    parseToken(token[0 .. index - 1], list, line, character - iter) catch continue;
+                    parseToken(token[index - 1 .. token.len], list, line, character - index) catch continue;
                     return;
                 }
-                return lexer_error(LexerError.InvalidToken, line, character, "'{s}' is not a valid token", .{token});
+                return lexerError(LexerError.InvalidToken, line, character, "'{s}' is not a valid token", .{token});
             }
         },
     }
 }
 
-fn create_token(
+fn createToken(
     kind: TokenKind,
     bytes: []u8,
     line: usize,
@@ -204,15 +204,15 @@ fn create_token(
     };
 }
 
-fn is_char(byte: u8) bool {
+fn isChar(byte: u8) bool {
     return (byte >= 'a' and byte <= 'z') or (byte >= 'A' and byte <= 'Z') or byte == '_';
 }
 
-fn is_digit(byte: u8) bool {
+fn isDigit(byte: u8) bool {
     return byte >= '0' and byte <= '9';
 }
 
-fn lexer_error(
+fn lexerError(
     err: LexerError,
     line: usize,
     character: usize,

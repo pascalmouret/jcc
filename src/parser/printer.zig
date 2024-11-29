@@ -18,7 +18,7 @@ const PrettyPrinter = struct {
             self.current_indent -= 2;
         }
     }
-    pub fn print_line(
+    pub fn printLine(
         self: PrettyPrinter,
         comptime fmt: []const u8,
         args: anytype,
@@ -29,64 +29,64 @@ const PrettyPrinter = struct {
     }
 };
 
-pub fn print_program(program: ast.Program, writer: std.fs.File.Writer) !void {
+pub fn printProgram(program: ast.Program, writer: std.fs.File.Writer) !void {
     var printer = PrettyPrinter.init(writer);
 
-    try printer.print_line("Program(", .{});
+    try printer.printLine("Program(", .{});
     printer.indent();
-    try print_function(program.function, &printer);
+    try printFunction(program.function, &printer);
     printer.undent();
-    try printer.print_line(")", .{});
+    try printer.printLine(")", .{});
 }
 
-fn print_function(function: ast.Function, printer: *PrettyPrinter) !void {
-    try printer.print_line("Function(", .{});
+fn printFunction(function: ast.Function, printer: *PrettyPrinter) !void {
+    try printer.printLine("Function(", .{});
     printer.indent();
-    try printer.print_line("name = {s}", .{function.name.name});
-    try print_statement(function.body, printer);
+    try printer.printLine("name = {s}", .{function.name.name});
+    try printStatement(function.body, printer);
     printer.undent();
-    try printer.print_line(")", .{});
+    try printer.printLine(")", .{});
 }
 
-fn print_statement(statement: ast.Statement, printer: *PrettyPrinter) !void {
-    try printer.print_line("{s}(", .{@tagName(statement)});
+fn printStatement(statement: ast.Statement, printer: *PrettyPrinter) !void {
+    try printer.printLine("{s}(", .{@tagName(statement)});
     printer.indent();
 
     switch (statement) {
         .ret => |ret| {
-            try print_expression(ret.expression, printer);
+            try printExpression(ret.expression, printer);
         },
     }
 
     printer.undent();
-    try printer.print_line(")", .{});
+    try printer.printLine(")", .{});
 }
 
-fn print_expression(expression: *ast.Expression, printer: *PrettyPrinter) std.fs.File.WriteError!void {
+fn printExpression(expression: *ast.Expression, printer: *PrettyPrinter) std.fs.File.WriteError!void {
     switch (expression.*) {
-        .factor => |factor| try print_factor(factor, printer),
+        .factor => |factor| try printFactor(factor, printer),
         .binary => |binary| {
-            try printer.print_line("Binary(", .{});
+            try printer.printLine("Binary(", .{});
             printer.indent();
-            try printer.print_line("{s}", .{@tagName(binary.operator)});
-            try print_expression(binary.left, printer);
-            try print_expression(binary.right, printer);
+            try printer.printLine("{s}", .{@tagName(binary.operator)});
+            try printExpression(binary.left, printer);
+            try printExpression(binary.right, printer);
             printer.undent();
-            try printer.print_line(")", .{});
+            try printer.printLine(")", .{});
         },
     }
 }
 
-fn print_factor(factor: *ast.Factor, printer: *PrettyPrinter) !void {
+fn printFactor(factor: *ast.Factor, printer: *PrettyPrinter) !void {
     switch (factor.*) {
         .unary => |u| {
-            try printer.print_line("{s}(", .{@tagName(u.operator)});
+            try printer.printLine("{s}(", .{@tagName(u.operator)});
             printer.indent();
-            try print_factor(u.factor, printer);
+            try printFactor(u.factor, printer);
             printer.undent();
-            try printer.print_line(")", .{});
+            try printer.printLine(")", .{});
         },
-        .expression => |e| try print_expression(e, printer),
-        .constant => try printer.print_line("Constant({d})", .{factor.constant.value}),
+        .expression => |e| try printExpression(e, printer),
+        .constant => try printer.printLine("Constant({d})", .{factor.constant.value}),
     }
 }
