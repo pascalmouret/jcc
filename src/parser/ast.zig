@@ -407,7 +407,7 @@ fn unexpectedToken(
     if (expected.len == 1) {
         return parserError(ParserError.UnexpectedToken, actual.line, actual.character, "Expected a '{s}', found '{s}'", .{ @tagName(expected[0]), actual.bytes });
     } else {
-        return parserError(ParserError.UnexpectedToken, actual.line, actual.character, "Expected one of '{s}', found '{s}'", .{ tagList(expected), actual.bytes });
+        return parserError(ParserError.UnexpectedToken, actual.line, actual.character, "Expected one of [{s}], found '{s}'", .{ tagList(expected), actual.bytes });
     }
 }
 
@@ -422,7 +422,8 @@ fn tagList(
             index += 2;
         }
         const tag = @tagName(kind);
-        @memcpy(bfr[index..tag.len], tag);
+        @memcpy(bfr[index .. index + tag.len], tag);
+        index += tag.len;
     }
     return bfr;
 }
