@@ -43,7 +43,27 @@ fn printFunction(function: ast.Function, printer: *PrettyPrinter) !void {
     try printer.printLine("Function(", .{});
     printer.indent();
     try printer.printLine("name = {s}", .{function.name.name});
-    try printStatement(function.body, printer);
+    for (function.body) |block_item| {
+        try printBlockItem(block_item, printer);
+    }
+    printer.undent();
+    try printer.printLine(")", .{});
+}
+
+fn printBlockItem(item: ast.BlockItem, printer: *PrettyPrinter) !void {
+    switch (item) {
+        .statement => try printStatement(item.statement, printer),
+        .declaration => try printDeclaration(item.declaration, printer),
+    }
+}
+
+fn printDeclaration(declaration: ast.Declaration, printer: *PrettyPrinter) !void {
+    try printer.printLine("Declaration(", .{});
+    printer.indent();
+    try printer.printLine("name = {s}", .{declaration.name.name});
+    if (declaration.expression) |expression| {
+        try printExpression(expression, printer);
+    }
     printer.undent();
     try printer.printLine(")", .{});
 }
@@ -56,6 +76,8 @@ fn printStatement(statement: ast.Statement, printer: *PrettyPrinter) !void {
         .ret => |ret| {
             try printExpression(ret.expression, printer);
         },
+        .expression => |exp| try printExpression(exp, printer),
+        .null => {},
     }
 
     printer.undent();
@@ -74,6 +96,14 @@ fn printExpression(expression: *ast.Expression, printer: *PrettyPrinter) std.fs.
             printer.undent();
             try printer.printLine(")", .{});
         },
+        .assignment => |assignment| {
+            try printer.printLine("Assignment(", .{});
+            printer.indent();
+            try printExpression(assignment.left, printer);
+            try printExpression(assignment.right, printer);
+            printer.undent();
+            try printer.printLine(")", .{});
+        },
     }
 }
 
@@ -88,5 +118,8 @@ fn printFactor(factor: *ast.Factor, printer: *PrettyPrinter) !void {
         },
         .expression => |e| try printExpression(e, printer),
         .constant => try printer.printLine("Constant({d})", .{factor.constant.value}),
+        .variable => |variable| {
+            try printer.printLine("Variable({s})", .{variable.name.name});
+        },
     }
 }

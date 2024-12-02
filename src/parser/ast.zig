@@ -111,7 +111,7 @@ pub const Program = struct {
 
 pub const Function = struct {
     name: Identifier,
-    body: Statement,
+    body: []BlockItem,
     pub fn parse(context: *ParserContext) !Function {
         try context.consumeA(.int);
         const identifier = try Identifier.parse(context);
@@ -119,13 +119,22 @@ pub const Function = struct {
         try context.consumeA(.void);
         try context.consumeA(.close_parenthesis);
         try context.consumeA(.open_brace);
-        const statement = try Statement.parse(context);
+
+        var list = std.ArrayList(BlockItem).init(context.allocator);
+        defer list.deinit();
+
+        var next = try context.peekKind();
+        while (next != .close_brace) {
+            try list.append(try BlockItem.parse(context));
+            next = try context.peekKind();
+        }
         try context.consumeA(.close_brace);
 
-        return Function{ .name = identifier, .body = statement };
+        return Function{ .name = identifier, .body = try list.toOwnedSlice() };
     }
     pub fn deinit(self: Function, allocator: std.mem.Allocator) void {
-        self.body.deinit(allocator);
+        for (self.body) |block| block.deinit(allocator);
+        allocator.free(self.body);
     }
 };
 
@@ -138,27 +147,51 @@ const Identifier = struct {
     }
 };
 
+pub const BlockItem = union(enum) {
+    statement: Statement,
+    declaration: Declaration,
+    pub fn parse(context: *ParserContext) !BlockItem {
+        switch (try context.peekKind()) {
+            .int => return BlockItem{ .declaration = try Declaration.parse(context) },
+            else => return BlockItem{ .statement = try Statement.parse(context) },
+        }
+    }
+    pub fn deinit(self: BlockItem, allocator: std.mem.Allocator) void {
+        switch (self) {
+            .statement => self.statement.deinit(allocator),
+            .declaration => self.declaration.deinit(allocator),
+        }
+    }
+};
+
 pub const Statement = union(enum) {
     ret: Ret,
+    expression: *Expression,
+    null: Null,
     pub fn parse(context: *ParserContext) !Statement {
         switch (try context.peekKind()) {
             .ret => return Statement{ .ret = try Ret.parse(context) },
+            .semicolon => {
+                try context.consumeA(.semicolon);
+                return Statement{ .null = .{} };
+            },
             else => {
-                const token = try context.next();
-                return parserError(
-                    ParserError.ExpectedStatement,
-                    token.line,
-                    token.character,
-                    "Expected statement, found '{s}'",
-                    .{token.bytes},
-                );
+                const expression = Statement{ .expression = try Expression.parse(context, 0) };
+                try context.consumeA(.semicolon);
+                return expression;
             },
         }
     }
     pub fn deinit(self: Statement, allocator: std.mem.Allocator) void {
-        self.ret.deinit(allocator);
+        switch (self) {
+            .ret => self.ret.deinit(allocator),
+            .expression => self.expression.deinit(allocator),
+            .null => {},
+        }
     }
 };
+
+const Null = struct {};
 
 const Ret = struct {
     expression: *Expression,
@@ -175,6 +208,7 @@ const Ret = struct {
 
 pub const Expression = union(enum) {
     binary: Binary,
+    assignment: Assignment,
     factor: *Factor,
     pub fn parse(context: *ParserContext, min_precedence: usize) (ParserError || error{OutOfMemory})!*Expression {
         var left = try (Expression{ .factor = try Factor.parse(context) }).toOwned(context.allocator);
@@ -186,9 +220,19 @@ pub const Expression = union(enum) {
             if (operator.precedence() < min_precedence) break;
             try context.consumeNext();
 
-            const right = try Expression.parse(context, operator.precedence() + 1);
-            const old_left = left;
-            left = try (Expression{ .binary = Binary{ .operator = operator, .left = old_left, .right = right } }).toOwned(context.allocator);
+            switch (operator) {
+                // right associative
+                .assign => {
+                    const right = try Expression.parse(context, operator.precedence());
+                    const old_left = left;
+                    left = try (Expression{ .assignment = Assignment{ .left = old_left, .right = right } }).toOwned(context.allocator);
+                },
+                else => {
+                    const right = try Expression.parse(context, operator.precedence() + 1);
+                    const old_left = left;
+                    left = try (Expression{ .binary = Binary{ .operator = operator, .left = old_left, .right = right } }).toOwned(context.allocator);
+                },
+            }
         }
 
         return left;
@@ -202,6 +246,7 @@ pub const Expression = union(enum) {
         switch (self.*) {
             .binary => self.binary.deinit(allocator),
             .factor => self.factor.deinit(allocator),
+            .assignment => self.assignment.deinit(allocator),
         }
         allocator.destroy(self);
     }
@@ -210,6 +255,7 @@ pub const Expression = union(enum) {
 pub const Factor = union(enum) {
     constant: Constant,
     unary: Unary,
+    variable: Variable,
     expression: *Expression,
     pub fn parse(context: *ParserContext) (ParserError || error{OutOfMemory})!*Factor {
         switch (try context.peekKind()) {
@@ -224,6 +270,10 @@ pub const Factor = union(enum) {
                 const expression = try Expression.parse(context, 0);
                 try context.consumeA(.close_parenthesis);
                 return (Factor{ .expression = expression }).toOwned(context.allocator);
+            },
+            .identifier => {
+                const identifier = try Identifier.parse(context);
+                return (Factor{ .variable = Variable{ .name = identifier } }).toOwned(context.allocator);
             },
             else => {
                 const token = try context.next();
@@ -249,6 +299,14 @@ pub const Factor = union(enum) {
             else => {},
         }
         allocator.destroy(self);
+    }
+};
+
+const Variable = struct {
+    name: Identifier,
+    pub fn parse(context: *ParserContext) !Variable {
+        const identifier = try Identifier.parse(context);
+        return Variable{ .name = identifier };
     }
 };
 
@@ -305,8 +363,9 @@ pub const BinaryOperator = enum {
     not_equal,
     logical_and,
     logical_or,
+    assign,
 
-    pub const token_kinds: [18]TokenKind = .{
+    pub const token_kinds: [19]TokenKind = .{
         .plus,
         .hyphen,
         .slash,
@@ -325,6 +384,7 @@ pub const BinaryOperator = enum {
         .not_equal,
         .logical_and,
         .logical_or,
+        .equal_sign,
     };
 
     pub fn peekParse(context: *ParserContext) !BinaryOperator {
@@ -348,6 +408,7 @@ pub const BinaryOperator = enum {
             .not_equal => .not_equal,
             .logical_and => .logical_and,
             .logical_or => .logical_or,
+            .equal_sign => .assign,
             else => unreachable,
         };
     }
@@ -371,6 +432,7 @@ pub const BinaryOperator = enum {
             .bitwise_or => 15,
             .logical_and => 10,
             .logical_or => 10,
+            .assign => 5,
         };
     }
 };
@@ -383,6 +445,39 @@ const Binary = struct {
         return self.operator == .logical_or or self.operator == .logical_and;
     }
     pub fn deinit(self: Binary, allocator: std.mem.Allocator) void {
+        self.left.deinit(allocator);
+        self.right.deinit(allocator);
+    }
+};
+
+pub const Declaration = struct {
+    name: Identifier,
+    expression: ?*Expression,
+    pub fn parse(context: *ParserContext) !Declaration {
+        try context.consumeA(.int);
+        const identifier = try Identifier.parse(context);
+        const next = try context.getOneOf(&.{ .equal_sign, .semicolon });
+        switch (next.kind) {
+            .equal_sign => {
+                const expression = try Expression.parse(context, 0);
+                try context.consumeA(.semicolon);
+                return Declaration{ .name = identifier, .expression = expression };
+            },
+            .semicolon => {
+                return Declaration{ .name = identifier, .expression = null };
+            },
+            else => unreachable,
+        }
+    }
+    pub fn deinit(self: Declaration, allocator: std.mem.Allocator) void {
+        if (self.expression) |exp| exp.deinit(allocator);
+    }
+};
+
+const Assignment = struct {
+    left: *Expression,
+    right: *Expression,
+    pub fn deinit(self: Assignment, allocator: std.mem.Allocator) void {
         self.left.deinit(allocator);
         self.right.deinit(allocator);
     }

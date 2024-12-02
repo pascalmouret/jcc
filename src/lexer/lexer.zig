@@ -33,6 +33,7 @@ pub const TokenKind = enum {
     greater,
     less_equal,
     greater_equal,
+    equal_sign,
 };
 
 const keyword_map = std.StaticStringMap(TokenKind).initComptime(.{
@@ -59,6 +60,7 @@ const symbol_map = std.StaticStringMap(TokenKind).initComptime(.{
     .{ "<", .less },
     .{ ">", .greater },
     .{ "!", .exclamation_point },
+    .{ "=", .equal_sign },
     .{ "--", .decrement },
     .{ "++", .increment },
     .{ ">>", .shift_right },
