@@ -3,6 +3,9 @@ const std = @import("std");
 const ast = @import("../parser.zig").ast;
 const tacky = @import("../tacky.zig").tacky;
 
+//  TODO: operand file
+const Identifier = @import("./program.zig").Identifier;
+
 pub const fromTacky = @import("./instructions_from_tacky.zig").fromTacky;
 
 pub const Instruction = union(enum) {
@@ -38,14 +41,14 @@ pub const Instruction = union(enum) {
     pub fn cmp(src: Operand, dst: Operand) Instruction {
         return Instruction{ .cmp = Cmp{ .src = src, .dst = dst } };
     }
-    pub fn jmp(dst_label: []u8, on: ?ConditionCode) Instruction {
-        return Instruction{ .jmp = Jmp{ .label = dst_label, .on = on } };
+    pub fn jmp(dst: Identifier, on: ?ConditionCode) Instruction {
+        return Instruction{ .jmp = Jmp{ .label = dst, .on = on } };
     }
     pub fn setCC(code: ConditionCode, dst: Operand) Instruction {
         return Instruction{ .set_cc = SetCC{ .code = code, .dst = dst.sized(1) } };
     }
-    pub fn label(name: []u8) Instruction {
-        return Instruction{ .label = Label{ .name = name } };
+    pub fn label(identifier: Identifier) Instruction {
+        return Instruction{ .label = Label{ .identifier = identifier } };
     }
     pub fn allocateStack(size: i32) Instruction {
         return Instruction{ .allocate_stack = AllocateStack{ .operand = Operand.immediate(size) } };
@@ -91,7 +94,7 @@ pub const ConditionCode = enum {
 };
 
 const Jmp = struct {
-    label: []u8,
+    label: Identifier,
     on: ?ConditionCode = null,
 };
 
@@ -101,7 +104,7 @@ const SetCC = struct {
 };
 
 const Label = struct {
-    name: []u8,
+    identifier: Identifier,
 };
 
 const AllocateStack = struct {
@@ -113,19 +116,14 @@ pub const Operand = union(enum) {
     immediate: Immediate,
     pseudo: Pseudo,
     stack: Stack,
-    pub fn fromVal(val: tacky.Val) Operand {
-        switch (val) {
-            .constant => |c| return Operand.immediate(c.value),
-            .tmp => |t| return Operand.pseudo(t.name),
-        }
-    }
+
     pub fn stackIfPseudo(self: Operand, map: *std.StringHashMap(usize)) !Operand {
         switch (self) {
             .pseudo => |p| {
-                if (map.get(p.name)) |offset| {
+                if (map.get(p.identifier.name)) |offset| {
                     return Operand.stack(offset);
                 } else {
-                    try map.put(p.name, (map.count() + 1) * 4);
+                    try map.put(p.identifier.name, (map.count() + 1) * 4);
                     return self.stackIfPseudo(map);
                 }
             },
@@ -147,8 +145,8 @@ pub const Operand = union(enum) {
     pub fn sizedRegister(reg: RegisterName, size: usize) Operand {
         return Operand{ .register = Register{ .name = reg, .size = size } };
     }
-    pub fn pseudo(name: []u8) Operand {
-        return Operand{ .pseudo = Pseudo{ .name = name } };
+    pub fn pseudo(identifier: Identifier) Operand {
+        return Operand{ .pseudo = Pseudo{ .identifier = identifier } };
     }
     pub fn stack(offset: usize) Operand {
         return Operand{ .stack = Stack{ .offset = offset } };
@@ -175,7 +173,7 @@ const Register = struct {
 };
 
 const Pseudo = struct {
-    name: []u8,
+    identifier: Identifier,
     size: usize = 4,
 };
 

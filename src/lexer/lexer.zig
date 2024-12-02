@@ -90,11 +90,13 @@ const LexerError = error{
 const LexerResult = struct {
     allocator: std.mem.Allocator,
     tokens: []Token,
-    pub fn create(allocator: std.mem.Allocator, tokens: []Token) LexerResult {
-        return LexerResult{ .allocator = allocator, .tokens = tokens };
+    bytes: []u8,
+    pub fn create(allocator: std.mem.Allocator, bytes: []u8, tokens: []Token) LexerResult {
+        return LexerResult{ .allocator = allocator, .bytes = bytes, .tokens = tokens };
     }
     pub fn deinit(self: LexerResult) void {
-        defer self.allocator.free(self.tokens);
+        self.allocator.free(self.bytes);
+        self.allocator.free(self.tokens);
     }
 };
 
@@ -142,7 +144,7 @@ pub fn bytesToTokens(allocator: std.mem.Allocator, bytes: []u8) !LexerResult {
     }
 
     try parseToken(bytes[token_start..], &tokens, line, character - (bytes.len - token_start));
-    return LexerResult.create(allocator, try tokens.toOwnedSlice());
+    return LexerResult.create(allocator, bytes, try tokens.toOwnedSlice());
 }
 
 fn parseToken(

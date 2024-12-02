@@ -72,7 +72,7 @@ const PrettyEmitter = struct {
     fn emitFunctionDefinition(self: PrettyEmitter, function_definition: FunctionDefinition) !void {
         try self.writer.print(
             "   .globl _{s}\n_{s}:\n",
-            .{ function_definition.name, function_definition.name },
+            .{ function_definition.identifier.name, function_definition.identifier.name },
         );
         try self.printInstruction("pushq", .{Operand.register(.rbp)});
         try self.printInstruction("movq", .{ Operand.register(.rsp), Operand.register(.rbp) });
@@ -119,13 +119,13 @@ const PrettyEmitter = struct {
             .cdq => try self.printInstruction("cdq", .{}),
             .jmp => |jmp| {
                 if (jmp.on) |on| {
-                    try self.printFormattedInstruction("j{s} L{s}", .{ @tagName(on), jmp.label }, .{});
+                    try self.printFormattedInstruction("j{s} L{s}", .{ @tagName(on), jmp.label.name }, .{});
                 } else {
-                    try self.printFormattedInstruction("jmp L{s}", .{jmp.label}, .{});
+                    try self.printFormattedInstruction("jmp L{s}", .{jmp.label.name}, .{});
                 }
             },
             .set_cc => |set_cc| try self.printFormattedInstruction("set{s}", .{@tagName(set_cc.code)}, .{set_cc.dst}),
-            .label => |label| try self.writer.print("    L{s}:\n", .{label.name}),
+            .label => |label| try self.writer.print("    L{s}:\n", .{label.identifier.name}),
             .cmp => |cmp| try self.printInstruction("cmpl", .{ cmp.src, cmp.dst }),
             .allocate_stack => |allocate| try self.printInstruction("subq", .{ allocate.operand, Operand.register(.rsp) }),
         }

@@ -31,33 +31,45 @@ pub fn runCompiler(allocator: std.mem.Allocator) !void {
     defer file.close();
 
     const bytes = try file.readToEndAlloc(allocator, std.math.maxInt(u32));
-    defer allocator.free(bytes);
+    errdefer allocator.free(bytes);
 
     const lex_result = try lex.bytesToTokens(allocator, bytes);
-    defer lex_result.deinit();
 
-    if (options.stage == .lex) return;
+    if (options.stage == .lex) {
+        lex_result.deinit();
+        return;
+    }
 
     const ast_program = try ast.tokensToProgram(allocator, lex_result.tokens);
-    defer ast_program.deinit();
+
+    lex_result.deinit();
 
     if (options.print_ast) {
         try astPrint(ast_program, std.io.getStdOut().writer());
     }
 
-    if (options.stage == .parse) return;
+    if (options.stage == .parse) {
+        ast_program.deinit();
+        return;
+    }
 
     const tacky_program = try tacky.programToTacky(allocator, ast_program);
-    defer tacky_program.deinit();
+
+    ast_program.deinit();
 
     if (options.print_tacky) {
         try tackyPrint(tacky_program, std.io.getStdOut().writer());
     }
 
-    if (options.stage == .tacky) return;
+    if (options.stage == .tacky) {
+        tacky_program.deinit();
+        return;
+    }
 
     const assembly_program = try codegen.program.fromTacky(allocator, tacky_program);
     defer assembly_program.deinit();
+
+    tacky_program.deinit();
 
     if (options.stage == .codegen) return;
 

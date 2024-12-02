@@ -133,6 +133,7 @@ pub const Function = struct {
         return Function{ .name = identifier, .body = try list.toOwnedSlice() };
     }
     pub fn deinit(self: Function, allocator: std.mem.Allocator) void {
+        self.name.deinit(allocator);
         for (self.body) |block| block.deinit(allocator);
         allocator.free(self.body);
     }
@@ -141,9 +142,11 @@ pub const Function = struct {
 const Identifier = struct {
     name: []u8,
     pub fn parse(context: *ParserContext) !Identifier {
-        return Identifier{
-            .name = (try context.getA(.identifier)).bytes,
-        };
+        const name = try context.allocator.dupe(u8, (try context.getA(.identifier)).bytes);
+        return Identifier{ .name = name };
+    }
+    pub fn deinit(self: Identifier, allocator: std.mem.Allocator) void {
+        allocator.free(self.name);
     }
 };
 
@@ -296,6 +299,7 @@ pub const Factor = union(enum) {
         switch (self.*) {
             .unary => self.unary.deinit(allocator),
             .expression => self.expression.deinit(allocator),
+            .variable => self.variable.deinit(allocator),
             else => {},
         }
         allocator.destroy(self);
@@ -307,6 +311,9 @@ const Variable = struct {
     pub fn parse(context: *ParserContext) !Variable {
         const identifier = try Identifier.parse(context);
         return Variable{ .name = identifier };
+    }
+    pub fn deinit(self: Variable, allocator: std.mem.Allocator) void {
+        self.name.deinit(allocator);
     }
 };
 
@@ -470,6 +477,7 @@ pub const Declaration = struct {
         }
     }
     pub fn deinit(self: Declaration, allocator: std.mem.Allocator) void {
+        self.name.deinit(allocator);
         if (self.expression) |exp| exp.deinit(allocator);
     }
 };

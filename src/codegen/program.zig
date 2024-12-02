@@ -11,33 +11,57 @@ pub fn fromTacky(allocator: std.mem.Allocator, program: tacky.Program) !Program 
     return try Program.fromProgram(allocator, program);
 }
 
-pub const Program = struct {
+pub const Context = struct {
     allocator: std.mem.Allocator,
+    identifiers: std.ArrayList(Identifier),
+    pub fn init(allocator: std.mem.Allocator) Context {
+        return Context{ .allocator = allocator, .identifiers = std.ArrayList(Identifier).init(allocator) };
+    }
+    pub fn getIdentifier(self: *Context, name: []u8) !Identifier {
+        for (self.identifiers.items) |item| {
+            if (std.mem.eql(u8, item.name, name)) {
+                return item;
+            }
+        }
+
+        const identifier = try Identifier.fromExisting(self.allocator, name);
+        errdefer identifier.deinit(self.allocator);
+        try self.identifiers.append(identifier);
+        return identifier;
+    }
+    pub fn deinit(self: Context) void {
+        for (self.identifiers.items) |item| item.deinit(self.allocator);
+        self.identifiers.deinit();
+    }
+};
+
+pub const Program = struct {
+    context: Context,
     function_definition: FunctionDefinition,
     pub fn fromProgram(allocator: std.mem.Allocator, program: tacky.Program) !Program {
-        return Program{
-            .allocator = allocator,
-            .function_definition = try FunctionDefinition.fromFunctionDefinition(allocator, program.function_definition),
-        };
+        var result = Program{ .context = Context.init(allocator), .function_definition = undefined };
+        result.function_definition = try FunctionDefinition.fromFunctionDefinition(&result.context, program.function_definition);
+        return result;
     }
     pub fn deinit(self: Program) void {
-        self.function_definition.deinit(self.allocator);
+        self.function_definition.deinit(self.context.allocator);
+        self.context.deinit();
     }
 };
 
 pub const FunctionDefinition = struct {
-    name: []u8,
+    identifier: Identifier,
     instructions: []Instruction,
-    pub fn fromFunctionDefinition(allocator: std.mem.Allocator, function_definition: tacky.FunctionDefinition) !FunctionDefinition {
-        const initial = try instructionsFromTacky(allocator, function_definition.instructions);
-        defer allocator.free(initial);
+    pub fn fromFunctionDefinition(context: *Context, function_definition: tacky.FunctionDefinition) !FunctionDefinition {
+        const initial = try instructionsFromTacky(context, function_definition.instructions);
+        defer context.allocator.free(initial);
 
-        const stacked = try FunctionDefinition.replacePseudo(allocator, initial);
-        defer allocator.free(stacked);
+        const stacked = try FunctionDefinition.replacePseudo(context.allocator, initial);
+        defer context.allocator.free(stacked);
 
-        const final = try FunctionDefinition.fixInstructions(allocator, stacked);
+        const final = try FunctionDefinition.fixInstructions(context.allocator, stacked);
 
-        return FunctionDefinition{ .name = function_definition.name, .instructions = final };
+        return FunctionDefinition{ .identifier = try context.getIdentifier(function_definition.name), .instructions = final };
     }
     pub fn replacePseudo(allocator: std.mem.Allocator, instructions: []const Instruction) ![]Instruction {
         var offset_map = std.StringHashMap(usize).init(allocator);
@@ -138,5 +162,16 @@ pub const FunctionDefinition = struct {
     }
     pub fn deinit(self: FunctionDefinition, allocator: std.mem.Allocator) void {
         allocator.free(self.instructions);
+    }
+};
+
+pub const Identifier = struct {
+    name: []u8,
+    pub fn fromExisting(allocator: std.mem.Allocator, existing: []const u8) !Identifier {
+        const name = try allocator.dupe(u8, existing);
+        return Identifier{ .name = name };
+    }
+    pub fn deinit(self: Identifier, allocator: std.mem.Allocator) void {
+        allocator.free(self.name);
     }
 };

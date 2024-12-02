@@ -43,13 +43,14 @@ pub const FunctionDefinition = struct {
     pub fn fromFunction(allocator: Allocator, function: ast.Function) !FunctionDefinition {
         var context = FunctionContext.init(allocator);
         return FunctionDefinition{
-            .name = function.name.name,
-            .instructions = try Instruction.fromStatement(&context, function.body),
+            .name = try allocator.dupe(u8, function.name.name),
+            .instructions = try Instruction.fromBlockItem(&context, function.body[0]),
             .context = context,
         };
     }
     pub fn deinit(self: FunctionDefinition, allocator: Allocator) void {
         self.context.deinit();
+        allocator.free(self.name);
         allocator.free(self.instructions);
     }
 };
@@ -61,6 +62,12 @@ pub const Instruction = union(enum) {
     copy: Copy,
     jump: Jump,
     label: Label,
+    pub fn fromBlockItem(context: *FunctionContext, item: ast.BlockItem) ![]Instruction {
+        switch (item) {
+            .statement => return Instruction.fromStatement(context, item.statement),
+            else => unreachable,
+        }
+    }
     pub fn fromStatement(context: *FunctionContext, statement: ast.Statement) ![]Instruction {
         var list = std.ArrayList(Instruction).init(context.allocator);
         defer list.deinit();
@@ -70,6 +77,7 @@ pub const Instruction = union(enum) {
                 const dst = try resolveExpression(context, &list, s.expression);
                 try list.append(Instruction{ .ret = Ret{ .val = dst } });
             },
+            else => unreachable,
         }
 
         return list.toOwnedSlice();
@@ -126,6 +134,7 @@ pub const Instruction = union(enum) {
                     return Val{ .tmp = dst };
                 }
             },
+            else => unreachable,
         }
     }
     fn resolveFactor(context: *FunctionContext, list: *std.ArrayList(Instruction), factor: *ast.Factor) error{OutOfMemory}!Val {
@@ -140,6 +149,7 @@ pub const Instruction = union(enum) {
             .expression => |exp| {
                 return try resolveExpression(context, list, exp);
             },
+            else => unreachable,
         }
     }
 };
@@ -195,7 +205,7 @@ const Constant = struct {
     value: i32,
 };
 
-const Tmp = struct {
+pub const Tmp = struct {
     var seed: usize = 0;
 
     name: []u8,
