@@ -91,6 +91,26 @@ const ParserContext = struct {
     }
 };
 
+const Position = struct {
+    character: usize,
+    line: usize,
+    pub fn extract(from: anytype) Position {
+        switch (@TypeOf(from)) {
+            *Expression, *Factor => {
+                switch (from.*) {
+                    inline else => |c| return Position.extract(c),
+                }
+            },
+            Token => {
+                return Position{ .character = from.character, .line = from.line };
+            },
+            else => {
+                return from.position;
+            },
+        }
+    }
+};
+
 pub fn tokensToProgram(allocator: std.mem.Allocator, tokens: []Token) !Program {
     var context = ParserContext.init(allocator, tokens);
     return try Program.parse(&context);
@@ -112,8 +132,9 @@ pub const Program = struct {
 pub const Function = struct {
     name: Identifier,
     body: []BlockItem,
+    position: Position,
     pub fn parse(context: *ParserContext) !Function {
-        try context.consumeA(.int);
+        const int = try context.getA(.int);
         const identifier = try Identifier.parse(context);
         try context.consumeA(.open_parenthesis);
         try context.consumeA(.void);
@@ -130,7 +151,11 @@ pub const Function = struct {
         }
         try context.consumeA(.close_brace);
 
-        return Function{ .name = identifier, .body = try list.toOwnedSlice() };
+        return Function{
+            .name = identifier,
+            .body = try list.toOwnedSlice(),
+            .position = Position.extract(int),
+        };
     }
     pub fn deinit(self: Function, allocator: std.mem.Allocator) void {
         self.name.deinit(allocator);
@@ -141,9 +166,14 @@ pub const Function = struct {
 
 const Identifier = struct {
     name: []u8,
+    position: Position,
     pub fn parse(context: *ParserContext) !Identifier {
-        const name = try context.allocator.dupe(u8, (try context.getA(.identifier)).bytes);
-        return Identifier{ .name = name };
+        const token = try context.getA(.identifier);
+        const name = try context.allocator.dupe(u8, token.bytes);
+        return Identifier{
+            .name = name,
+            .position = Position.extract(token),
+        };
     }
     pub fn deinit(self: Identifier, allocator: std.mem.Allocator) void {
         allocator.free(self.name);
@@ -198,11 +228,15 @@ const Null = struct {};
 
 const Ret = struct {
     expression: *Expression,
+    position: Position,
     pub fn parse(context: *ParserContext) !Ret {
-        try context.consumeA(.ret);
+        const ret = try context.getA(.ret);
         const expression = try Expression.parse(context, 0);
         try context.consumeA(.semicolon);
-        return Ret{ .expression = expression };
+        return Ret{
+            .expression = expression,
+            .position = Position.extract(ret),
+        };
     }
     pub fn deinit(self: Ret, allocator: std.mem.Allocator) void {
         self.expression.deinit(allocator);
@@ -228,12 +262,21 @@ pub const Expression = union(enum) {
                 .assign => {
                     const right = try Expression.parse(context, operator.precedence());
                     const old_left = left;
-                    left = try (Expression{ .assignment = Assignment{ .left = old_left, .right = right } }).toOwned(context.allocator);
+                    left = try (Expression{ .assignment = Assignment{
+                        .left = old_left,
+                        .right = right,
+                        .position = Position.extract(left),
+                    } }).toOwned(context.allocator);
                 },
                 else => {
                     const right = try Expression.parse(context, operator.precedence() + 1);
                     const old_left = left;
-                    left = try (Expression{ .binary = Binary{ .operator = operator, .left = old_left, .right = right } }).toOwned(context.allocator);
+                    left = try (Expression{ .binary = Binary{
+                        .operator = operator,
+                        .left = old_left,
+                        .right = right,
+                        .position = Position.extract(left),
+                    } }).toOwned(context.allocator);
                 },
             }
         }
@@ -276,7 +319,7 @@ pub const Factor = union(enum) {
             },
             .identifier => {
                 const identifier = try Identifier.parse(context);
-                return (Factor{ .variable = Variable{ .name = identifier } }).toOwned(context.allocator);
+                return (Factor{ .variable = Variable{ .name = identifier, .position = identifier.position } }).toOwned(context.allocator);
             },
             else => {
                 const token = try context.next();
@@ -308,9 +351,13 @@ pub const Factor = union(enum) {
 
 const Variable = struct {
     name: Identifier,
+    position: Position,
     pub fn parse(context: *ParserContext) !Variable {
         const identifier = try Identifier.parse(context);
-        return Variable{ .name = identifier };
+        return Variable{
+            .name = identifier,
+            .position = identifier.position,
+        };
     }
     pub fn deinit(self: Variable, allocator: std.mem.Allocator) void {
         self.name.deinit(allocator);
@@ -319,12 +366,16 @@ const Variable = struct {
 
 const Constant = struct {
     value: i32,
+    position: Position,
     pub fn parse(context: *ParserContext) !Constant {
         const constant = try context.getA(.constant);
         const as_int = std.fmt.parseInt(i32, constant.bytes, 10) catch {
             return parserError(ParserError.InvalidConstant, constant.line, constant.character, "'{s}' is not a valid constant", .{constant.bytes});
         };
-        return Constant{ .value = as_int };
+        return Constant{
+            .value = as_int,
+            .position = Position.extract(constant),
+        };
     }
 };
 
@@ -337,13 +388,20 @@ pub const UnaryOperator = enum {
 const Unary = struct {
     operator: UnaryOperator,
     factor: *Factor,
+    position: Position,
     pub fn parse(context: *ParserContext) !Unary {
-        switch (try context.consumeOneOf(&.{ .hyphen, .tilde, .exclamation_point })) {
-            .hyphen => return Unary{ .operator = .negate, .factor = try Factor.parse(context) },
-            .tilde => return Unary{ .operator = .complement, .factor = try Factor.parse(context) },
-            .exclamation_point => return Unary{ .operator = .logical_not, .factor = try Factor.parse(context) },
+        const operator_token = try context.getOneOf(&.{ .hyphen, .tilde, .exclamation_point });
+        const operator: UnaryOperator = switch (operator_token.kind) {
+            .hyphen => .negate,
+            .tilde => .complement,
+            .exclamation_point => .logical_not,
             else => unreachable,
-        }
+        };
+        return Unary{
+            .operator = operator,
+            .factor = try Factor.parse(context),
+            .position = Position.extract(operator_token),
+        };
     }
     pub fn deinit(self: Unary, allocator: std.mem.Allocator) void {
         self.factor.deinit(allocator);
@@ -448,6 +506,7 @@ const Binary = struct {
     operator: BinaryOperator,
     left: *Expression,
     right: *Expression,
+    position: Position,
     pub fn canShortCircuit(self: Binary) bool {
         return self.operator == .logical_or or self.operator == .logical_and;
     }
@@ -460,18 +519,19 @@ const Binary = struct {
 pub const Declaration = struct {
     name: Identifier,
     expression: ?*Expression,
+    position: Position,
     pub fn parse(context: *ParserContext) !Declaration {
-        try context.consumeA(.int);
+        const int = try context.getA(.int);
         const identifier = try Identifier.parse(context);
         const next = try context.getOneOf(&.{ .equal_sign, .semicolon });
         switch (next.kind) {
             .equal_sign => {
                 const expression = try Expression.parse(context, 0);
                 try context.consumeA(.semicolon);
-                return Declaration{ .name = identifier, .expression = expression };
+                return Declaration{ .name = identifier, .expression = expression, .position = Position.extract(int) };
             },
             .semicolon => {
-                return Declaration{ .name = identifier, .expression = null };
+                return Declaration{ .name = identifier, .expression = null, .position = Position.extract(int) };
             },
             else => unreachable,
         }
@@ -485,6 +545,7 @@ pub const Declaration = struct {
 const Assignment = struct {
     left: *Expression,
     right: *Expression,
+    position: Position,
     pub fn deinit(self: Assignment, allocator: std.mem.Allocator) void {
         self.left.deinit(allocator);
         self.right.deinit(allocator);
