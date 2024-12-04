@@ -12,6 +12,7 @@ pub const Options = struct {
 pub const Stage = enum {
     lex,
     parse,
+    validate,
     tacky,
     codegen,
     full,

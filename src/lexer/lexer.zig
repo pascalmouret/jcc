@@ -87,7 +87,7 @@ const LexerError = error{
     InvalidToken,
 };
 
-const LexerResult = struct {
+pub const LexerResult = struct {
     allocator: std.mem.Allocator,
     tokens: []Token,
     bytes: []u8,
