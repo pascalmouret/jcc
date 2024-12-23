@@ -24,6 +24,12 @@ const FunctionContext = struct {
     pub fn init(allocator: Allocator) FunctionContext {
         return FunctionContext{ .allocator = allocator, .managed_strings = std.ArrayList([]u8).init(allocator) };
     }
+    pub fn dupeString(self: *FunctionContext, string: []const u8) ![]u8 {
+        const dupe = try self.allocator.dupe(u8, string);
+        errdefer self.allocator.free(dupe);
+        try self.managed_strings.append(dupe);
+        return dupe;
+    }
     pub fn allocateFormatedString(self: *FunctionContext, comptime fmt: []const u8, args: anytype) ![]u8 {
         const string = try std.fmt.allocPrint(self.allocator, fmt, args);
         errdefer self.allocator.free(string);
@@ -42,9 +48,21 @@ pub const FunctionDefinition = struct {
     instructions: []Instruction,
     pub fn fromFunction(allocator: Allocator, function: ast.Function) !FunctionDefinition {
         var context = FunctionContext.init(allocator);
+        errdefer context.deinit();
+
+        var list = std.ArrayList(Instruction).init(allocator);
+        defer list.deinit();
+
+        for (function.body) |item| {
+            try Instruction.resolveBlockItem(&context, &list, item);
+        }
+
+        // make sure we return 0 if no return happened before
+        try list.append(Instruction{ .ret = Ret{ .val = Val{ .constant = Constant{ .value = 0 } } } });
+
         return FunctionDefinition{
             .name = try allocator.dupe(u8, function.name.name),
-            .instructions = try Instruction.fromBlockItem(&context, function.body[0]),
+            .instructions = try list.toOwnedSlice(),
             .context = context,
         };
     }
@@ -62,25 +80,30 @@ pub const Instruction = union(enum) {
     copy: Copy,
     jump: Jump,
     label: Label,
-    pub fn fromBlockItem(context: *FunctionContext, item: ast.BlockItem) ![]Instruction {
+    pub fn resolveBlockItem(context: *FunctionContext, list: *std.ArrayList(Instruction), item: ast.BlockItem) !void {
         switch (item) {
-            .statement => return Instruction.fromStatement(context, item.statement),
-            else => unreachable,
+            .statement => return Instruction.resolveStatement(context, list, item.statement),
+            .declaration => return Instruction.resolveDeclaration(context, list, item.declaration),
         }
     }
-    pub fn fromStatement(context: *FunctionContext, statement: ast.Statement) ![]Instruction {
-        var list = std.ArrayList(Instruction).init(context.allocator);
-        defer list.deinit();
-
+    fn resolveStatement(context: *FunctionContext, list: *std.ArrayList(Instruction), statement: ast.Statement) !void {
         switch (statement) {
             .ret => |s| {
-                const dst = try resolveExpression(context, &list, s.expression);
+                const dst = try resolveExpression(context, list, s.expression);
                 try list.append(Instruction{ .ret = Ret{ .val = dst } });
             },
-            else => unreachable,
+            .expression => |exp| {
+                // we get a destination but we don't need it for standalone expressions
+                _ = try resolveExpression(context, list, exp);
+            },
+            .null => {},
         }
-
-        return list.toOwnedSlice();
+    }
+    fn resolveDeclaration(context: *FunctionContext, list: *std.ArrayList(Instruction), declaration: ast.Declaration) !void {
+        if (declaration.expression) |exp| {
+            const dst = try resolveExpression(context, list, exp);
+            try list.append(Instruction{ .copy = Copy{ .src = dst, .dst = try Tmp.fromIdentifier(context, declaration) } });
+        }
     }
     fn resolveExpression(context: *FunctionContext, list: *std.ArrayList(Instruction), expression: *ast.Expression) error{OutOfMemory}!Val {
         switch (expression.*) {
@@ -134,7 +157,13 @@ pub const Instruction = union(enum) {
                     return Val{ .tmp = dst };
                 }
             },
-            else => unreachable,
+            .assignment => |assignment| {
+                // This always has to be a variable as we validated this before
+                const destination = try Instruction.resolveExpression(context, list, assignment.left);
+                const value = try Instruction.resolveExpression(context, list, assignment.right);
+                try list.append(Instruction{ .copy = Copy{ .src = value, .dst = destination.tmp } });
+                return destination;
+            },
         }
     }
     fn resolveFactor(context: *FunctionContext, list: *std.ArrayList(Instruction), factor: *ast.Factor) error{OutOfMemory}!Val {
@@ -149,7 +178,9 @@ pub const Instruction = union(enum) {
             .expression => |exp| {
                 return try resolveExpression(context, list, exp);
             },
-            else => unreachable,
+            .variable => |variable| {
+                return Val{ .tmp = try Tmp.fromIdentifier(context, variable) };
+            },
         }
     }
 };
@@ -212,7 +243,12 @@ pub const Tmp = struct {
 
     pub fn make(context: *FunctionContext) !Tmp {
         defer seed += 1;
-        const name = try context.allocateFormatedString("tmp_${d}", .{seed});
+        const name = try context.allocateFormatedString("tmp.${d}", .{seed});
+        return Tmp{ .name = name };
+    }
+
+    pub fn fromIdentifier(context: *FunctionContext, variableOrDeclaration: anytype) !Tmp {
+        const name = try context.dupeString(variableOrDeclaration.identifier.name);
         return Tmp{ .name = name };
     }
 };

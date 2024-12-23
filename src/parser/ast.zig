@@ -388,7 +388,7 @@ pub const Factor = union(enum) {
         const result = try allocator.create(Factor);
         result.* = Factor{
             .variable = Variable{
-                .name = name,
+                .identifier = name,
                 .position = position,
             },
         };
@@ -416,17 +416,17 @@ pub const Factor = union(enum) {
 };
 
 const Variable = struct {
-    name: Identifier,
+    identifier: Identifier,
     position: Position,
     pub fn parse(context: *ParserContext) !Variable {
         const identifier = try Identifier.parse(context);
         return Variable{
-            .name = identifier,
+            .identifier = identifier,
             .position = identifier.position,
         };
     }
     pub fn deinit(self: Variable, allocator: std.mem.Allocator) void {
-        self.name.deinit(allocator);
+        self.identifier.deinit(allocator);
     }
 };
 
@@ -583,7 +583,7 @@ const Binary = struct {
 };
 
 pub const Declaration = struct {
-    name: Identifier,
+    identifier: Identifier,
     expression: ?*Expression,
     position: Position,
     pub fn parse(context: *ParserContext) !Declaration {
@@ -594,16 +594,16 @@ pub const Declaration = struct {
             .equal_sign => {
                 const expression = try Expression.parse(context, 0);
                 try context.consumeA(.semicolon);
-                return Declaration{ .name = identifier, .expression = expression, .position = Position.extract(int) };
+                return Declaration{ .identifier = identifier, .expression = expression, .position = Position.extract(int) };
             },
             .semicolon => {
-                return Declaration{ .name = identifier, .expression = null, .position = Position.extract(int) };
+                return Declaration{ .identifier = identifier, .expression = null, .position = Position.extract(int) };
             },
             else => unreachable,
         }
     }
     pub fn deinit(self: Declaration, allocator: std.mem.Allocator) void {
-        self.name.deinit(allocator);
+        self.identifier.deinit(allocator);
         if (self.expression) |exp| exp.deinit(allocator);
     }
 };

@@ -60,7 +60,7 @@ fn printBlockItem(item: ast.BlockItem, printer: *PrettyPrinter) !void {
 fn printDeclaration(declaration: ast.Declaration, printer: *PrettyPrinter) !void {
     try printer.printLine("Declaration(", .{});
     printer.indent();
-    try printer.printLine("name = {s}", .{declaration.name.name});
+    try printer.printLine("name = {s}", .{declaration.identifier.name});
     if (declaration.expression) |expression| {
         try printExpression(expression, printer);
     }
@@ -119,7 +119,7 @@ fn printFactor(factor: *ast.Factor, printer: *PrettyPrinter) !void {
         .expression => |e| try printExpression(e, printer),
         .constant => try printer.printLine("Constant({d})", .{factor.constant.value}),
         .variable => |variable| {
-            try printer.printLine("Variable({s})", .{variable.name.name});
+            try printer.printLine("Variable({s})", .{variable.identifier.name});
         },
     }
 }

@@ -58,20 +58,20 @@ fn processFunction(context: *Context, function: ast.Function) !ast.Function {
 fn processBlockItem(context: *Context, map: *std.StringHashMap([]const u8), block_item: ast.BlockItem) !ast.BlockItem {
     switch (block_item) {
         .declaration => |declaration| {
-            if (map.get(declaration.name.name)) |_| {
+            if (map.get(declaration.identifier.name)) |_| {
                 return validationError(
                     ValidationError.AlreadyDeclared,
                     declaration.position,
                     "Variable '{s}' has already been decalred.",
-                    .{declaration.name.name},
+                    .{declaration.identifier.name},
                 );
             } else {
-                const unique_identifier = try context.generateUniqueIdentifier(declaration.name);
+                const unique_identifier = try context.generateUniqueIdentifier(declaration.identifier);
 
-                try map.put(declaration.name.name, unique_identifier.name);
+                try map.put(declaration.identifier.name, unique_identifier.name);
 
                 const result = ast.Declaration{
-                    .name = unique_identifier,
+                    .identifier = unique_identifier,
                     .position = declaration.position,
                     .expression = if (declaration.expression) |exp| try processExpression(context, map, exp) else null,
                 };
@@ -133,17 +133,17 @@ fn processExpression(context: *Context, map: *std.StringHashMap([]const u8), exp
 fn processFactor(context: *Context, map: *std.StringHashMap([]const u8), factor: *ast.Factor) (ValidationError || error{OutOfMemory})!*ast.Factor {
     switch (factor.*) {
         .variable => |variable| {
-            if (map.get(variable.name.name)) |unique| {
+            if (map.get(variable.identifier.name)) |unique| {
                 return ast.Factor.variable(
                     context.allocator,
                     ast.Identifier{
                         .name = try context.allocator.dupe(u8, unique),
-                        .position = variable.name.position,
+                        .position = variable.identifier.position,
                     },
                     variable.position,
                 );
             } else {
-                return validationError(ValidationError.NotDeclared, variable.position, "Variable '{s}' has not been declared.", .{variable.name.name});
+                return validationError(ValidationError.NotDeclared, variable.position, "Variable '{s}' has not been declared.", .{variable.identifier.name});
             }
         },
         .constant => |constant| return try ast.Factor.constant(context.allocator, constant.value, constant.position),
