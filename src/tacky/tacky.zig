@@ -113,14 +113,14 @@ pub const Instruction = union(enum) {
                     const short_circuit_label = try Label.make(
                         context,
                         "{s}_{s}",
-                        .{ @tagName(binary.operator), if (binary.operator == .logical_and) "false" else "true" },
+                        .{ @tagName(binary.operator.operator), if (binary.operator.operator == .logical_and) "false" else "true" },
                     );
-                    const end_label = try Label.make(context, "{s}_end", .{@tagName(binary.operator)});
+                    const end_label = try Label.make(context, "{s}_end", .{@tagName(binary.operator.operator)});
 
                     const dst = try Tmp.make(context);
                     const src1 = try Instruction.resolveExpression(context, list, binary.left);
 
-                    switch (binary.operator) {
+                    switch (binary.operator.operator) {
                         .logical_and => {
                             try list.append(Instruction{ .jump = Jump{ .condition = .{ .on = .zero, .val = src1 }, .label = short_circuit_label.name } });
                         },
@@ -132,7 +132,7 @@ pub const Instruction = union(enum) {
 
                     const src2 = try Instruction.resolveExpression(context, list, binary.right);
 
-                    switch (binary.operator) {
+                    switch (binary.operator.operator) {
                         .logical_and => {
                             try list.append(Instruction{ .jump = Jump{ .condition = .{ .on = .zero, .val = src2 }, .label = short_circuit_label.name } });
                         },
@@ -142,10 +142,10 @@ pub const Instruction = union(enum) {
                         else => unreachable,
                     }
 
-                    try list.append(Instruction{ .copy = Copy{ .src = Val{ .constant = Constant{ .value = if (binary.operator == .logical_and) 1 else 0 } }, .dst = dst } });
+                    try list.append(Instruction{ .copy = Copy{ .src = Val{ .constant = Constant{ .value = if (binary.operator.operator == .logical_and) 1 else 0 } }, .dst = dst } });
                     try list.append(Instruction{ .jump = Jump{ .label = end_label.name } });
                     try list.append(Instruction{ .label = short_circuit_label });
-                    try list.append(Instruction{ .copy = Copy{ .src = Val{ .constant = Constant{ .value = if (binary.operator == .logical_and) 0 else 1 } }, .dst = dst } });
+                    try list.append(Instruction{ .copy = Copy{ .src = Val{ .constant = Constant{ .value = if (binary.operator.operator == .logical_and) 0 else 1 } }, .dst = dst } });
                     try list.append(Instruction{ .label = end_label });
 
                     return Val{ .tmp = dst };

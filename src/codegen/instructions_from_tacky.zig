@@ -78,7 +78,7 @@ fn appendJump(context: *FunctionContext, jump: tacky.Jump) !void {
 }
 
 fn appendUnary(context: *FunctionContext, unary: tacky.Unary) !void {
-    if (unary.operator == .logical_not) {
+    if (unary.operator.operator == .logical_not) {
         try context.list.append(Instruction.cmp(Operand.immediate(0), try context.operandFromVal(unary.src)));
         try context.list.append(Instruction.mov(Operand.immediate(0), try context.operandFromTmp(unary.dst)));
         try context.list.append(Instruction.setCC(.e, try context.operandFromTmp(unary.dst)));
@@ -89,9 +89,9 @@ fn appendUnary(context: *FunctionContext, unary: tacky.Unary) !void {
 }
 
 fn appendBinary(context: *FunctionContext, binary: tacky.Binary) !void {
-    switch (binary.operator) {
+    switch (binary.operator.operator) {
         .less_than, .less_than_equal, .greater_than, .greater_than_equal, .equal, .not_equal => {
-            const condition: ConditionCode = switch (binary.operator) {
+            const condition: ConditionCode = switch (binary.operator.operator) {
                 .less_than => .l,
                 .less_than_equal => .le,
                 .greater_than => .g,
@@ -109,7 +109,7 @@ fn appendBinary(context: *FunctionContext, binary: tacky.Binary) !void {
             try context.list.append(Instruction.cdq());
             try context.list.append(Instruction.idiv(try context.operandFromVal(binary.src2)));
 
-            if (binary.operator == .divide) {
+            if (binary.operator.operator == .divide) {
                 try context.list.append(Instruction.mov(Operand.register(.ax), try context.operandFromTmp(binary.dst)));
             } else {
                 try context.list.append(Instruction.mov(Operand.register(.dx), try context.operandFromTmp(binary.dst)));

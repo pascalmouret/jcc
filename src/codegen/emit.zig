@@ -96,14 +96,14 @@ const PrettyEmitter = struct {
                 try self.printInstruction("ret", .{});
             },
             .unary => |unary| {
-                switch (unary.operator) {
+                switch (unary.operator.operator) {
                     .complement => try self.printInstruction("notl", .{unary.operand}),
                     .negate => try self.printInstruction("negl", .{unary.operand}),
                     else => unreachable,
                 }
             },
             .binary => |binary| {
-                switch (binary.operator) {
+                switch (binary.operator.operator) {
                     .add => try self.printInstruction("addl", .{ binary.src, binary.dst }),
                     .subtract => try self.printInstruction("subl", .{ binary.src, binary.dst }),
                     .multiply => try self.printInstruction("imull", .{ binary.src, binary.dst }),

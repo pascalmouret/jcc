@@ -4,6 +4,11 @@ const lexer = @import("../lexer/lexer.zig");
 const Token = lexer.Token;
 const TokenKind = lexer.TokenKind;
 
+pub const Operator = @import("./operator.zig").Operator;
+pub const UnaryOperator = @import("./operator.zig").UnaryOperator;
+pub const BinaryOperator = @import("./operator.zig").BinaryOperator;
+pub const AssignmentOperator = @import("./operator.zig").AssignmentOperator;
+
 const ParserError = error{
     UnexpectedToken,
     UnexpectedEOF,
@@ -12,7 +17,7 @@ const ParserError = error{
     InvalidConstant,
 };
 
-const ParserContext = struct {
+pub const ParserContext = struct {
     allocator: std.mem.Allocator,
     tokens: []Token,
     index: usize,
@@ -175,6 +180,10 @@ pub const Identifier = struct {
             .position = Position.extract(token),
         };
     }
+    pub fn copy(self: Identifier, alloator: std.mem.Allocator) !Identifier {
+        const dupe = try alloator.dupe(u8, self.name);
+        return Identifier{ .name = dupe, .position = self.position };
+    }
     pub fn deinit(self: Identifier, allocator: std.mem.Allocator) void {
         allocator.free(self.name);
     }
@@ -251,24 +260,26 @@ pub const Expression = union(enum) {
         var left = try Expression.factor(context.allocator, try Factor.parse(context));
         errdefer left.deinit(context.allocator);
 
-        while (context.nextIsOneOf(&BinaryOperator.token_kinds)) {
-            const operator = try BinaryOperator.peekParse(context);
-
-            if (operator.precedence() < min_precedence) break;
+        var operator = try Operator.peekParseWithoutUnary(context);
+        while (operator != null) : (operator = try Operator.peekParseWithoutUnary(context)) {
+            if (operator.?.precedence() < min_precedence) break;
             try context.consumeNext();
 
-            switch (operator) {
-                // right associative
-                .assign => {
-                    const right = try Expression.parse(context, operator.precedence());
-                    const old_left = left;
-                    left = try Expression.assignment(context.allocator, old_left, right, Position.extract(left));
+            switch (operator.?) {
+                .assignment => |op| {
+                    var right = try Expression.parse(context, op.precedence);
+
+                    if (op.binary_operator) |binary_op| {
+                        right = try Expression.binary(context.allocator, binary_op, try left.copy(context.allocator), right, Position.extract(left));
+                    }
+
+                    left = try Expression.assignment(context.allocator, left, right, Position.extract(left));
                 },
-                else => {
-                    const right = try Expression.parse(context, operator.precedence() + 1);
-                    const old_left = left;
-                    left = try Expression.binary(context.allocator, operator, old_left, right, Position.extract(left));
+                .binary => |op| {
+                    const right = try Expression.parse(context, op.precedence + 1);
+                    left = try Expression.binary(context.allocator, op, left, right, Position.extract(left));
                 },
+                .unary => unreachable,
             }
         }
 
@@ -313,10 +324,26 @@ pub const Expression = union(enum) {
         result.* = Expression{ .factor = inner };
         return result;
     }
-    pub fn toOwned(self: Expression, allocator: std.mem.Allocator) !*Expression {
-        const result = try allocator.create(Expression);
-        result.* = self;
-        return result;
+    pub fn copy(self: *Expression, allocator: std.mem.Allocator) error{OutOfMemory}!*Expression {
+        switch (self.*) {
+            .binary => return Expression.binary(
+                allocator,
+                self.binary.operator,
+                try self.binary.left.copy(allocator),
+                try self.binary.right.copy(allocator),
+                self.binary.position,
+            ),
+            .factor => return Expression.factor(
+                allocator,
+                try self.factor.copy(allocator),
+            ),
+            .assignment => return Expression.assignment(
+                allocator,
+                try self.assignment.left.copy(allocator),
+                try self.assignment.right.copy(allocator),
+                self.assignment.position,
+            ),
+        }
     }
     pub fn deinit(self: *Expression, allocator: std.mem.Allocator) void {
         switch (self.*) {
@@ -404,6 +431,30 @@ pub const Factor = union(enum) {
         result.* = self;
         return result;
     }
+    pub fn copy(self: *Factor, allocator: std.mem.Allocator) error{OutOfMemory}!*Factor {
+        switch (self.*) {
+            .unary => return Factor.unary(
+                allocator,
+                self.unary.operator,
+                try self.unary.factor.copy(allocator),
+                self.unary.position,
+            ),
+            .expression => return Factor.expression(
+                allocator,
+                try self.expression.copy(allocator),
+            ),
+            .variable => return Factor.variable(
+                allocator,
+                try self.variable.identifier.copy(allocator),
+                self.variable.position,
+            ),
+            .constant => return Factor.constant(
+                allocator,
+                self.constant.value,
+                self.constant.position,
+            ),
+        }
+    }
     pub fn deinit(self: *Factor, allocator: std.mem.Allocator) void {
         switch (self.*) {
             .unary => self.unary.deinit(allocator),
@@ -428,6 +479,9 @@ const Variable = struct {
     pub fn deinit(self: Variable, allocator: std.mem.Allocator) void {
         self.identifier.deinit(allocator);
     }
+    pub fn copy(self: Variable, allocator: std.mem.Allocator) !Variable {
+        return Variable{ .identifier = try self.identifier.copy(allocator) };
+    }
 };
 
 const Constant = struct {
@@ -445,126 +499,21 @@ const Constant = struct {
     }
 };
 
-pub const UnaryOperator = enum {
-    negate,
-    complement,
-    logical_not,
-};
-
 const Unary = struct {
     operator: UnaryOperator,
     factor: *Factor,
     position: Position,
     pub fn parse(context: *ParserContext) !Unary {
-        const operator_token = try context.getOneOf(&.{ .hyphen, .tilde, .exclamation_point });
-        const operator: UnaryOperator = switch (operator_token.kind) {
-            .hyphen => .negate,
-            .tilde => .complement,
-            .exclamation_point => .logical_not,
-            else => unreachable,
-        };
+        const position = Position.extract(try context.peek());
+        const operator = try UnaryOperator.parse(context);
         return Unary{
             .operator = operator,
             .factor = try Factor.parse(context),
-            .position = Position.extract(operator_token),
+            .position = position,
         };
     }
     pub fn deinit(self: Unary, allocator: std.mem.Allocator) void {
         self.factor.deinit(allocator);
-    }
-};
-
-// TODO: less boilerplate?
-pub const BinaryOperator = enum {
-    add,
-    subtract,
-    divide,
-    multiply,
-    modulo,
-    bitwise_and,
-    bitwise_or,
-    xor,
-    shift_left,
-    shift_right,
-    less_than,
-    less_than_equal,
-    greater_than,
-    greater_than_equal,
-    equal,
-    not_equal,
-    logical_and,
-    logical_or,
-    assign,
-
-    pub const token_kinds: [19]TokenKind = .{
-        .plus,
-        .hyphen,
-        .slash,
-        .asterisk,
-        .percent,
-        .ampersand,
-        .pipe,
-        .caret,
-        .shift_left,
-        .shift_right,
-        .less,
-        .less_equal,
-        .greater,
-        .greater_equal,
-        .equal,
-        .not_equal,
-        .logical_and,
-        .logical_or,
-        .equal_sign,
-    };
-
-    pub fn peekParse(context: *ParserContext) !BinaryOperator {
-        const next_kind = try context.peekKind();
-        return switch (next_kind) {
-            .plus => .add,
-            .hyphen => .subtract,
-            .slash => .divide,
-            .asterisk => .multiply,
-            .percent => .modulo,
-            .ampersand => .bitwise_and,
-            .pipe => .bitwise_or,
-            .caret => .xor,
-            .shift_left => .shift_left,
-            .shift_right => .shift_right,
-            .less => .less_than,
-            .less_equal => .less_than_equal,
-            .greater => .greater_than,
-            .greater_equal => .greater_than_equal,
-            .equal => .equal,
-            .not_equal => .not_equal,
-            .logical_and => .logical_and,
-            .logical_or => .logical_or,
-            .equal_sign => .assign,
-            else => unreachable,
-        };
-    }
-    pub fn precedence(self: BinaryOperator) usize {
-        return switch (self) {
-            .modulo => 50,
-            .multiply => 50,
-            .divide => 50,
-            .add => 45,
-            .subtract => 45,
-            .shift_left => 40,
-            .shift_right => 40,
-            .less_than => 35,
-            .less_than_equal => 35,
-            .greater_than => 35,
-            .greater_than_equal => 35,
-            .equal => 30,
-            .not_equal => 30,
-            .bitwise_and => 25,
-            .xor => 20,
-            .bitwise_or => 15,
-            .logical_and => 10,
-            .logical_or => 10,
-            .assign => 5,
-        };
     }
 };
 
@@ -574,7 +523,7 @@ const Binary = struct {
     right: *Expression,
     position: Position,
     pub fn canShortCircuit(self: Binary) bool {
-        return self.operator == .logical_or or self.operator == .logical_and;
+        return self.operator.operator == .logical_or or self.operator.operator == .logical_and;
     }
     pub fn deinit(self: Binary, allocator: std.mem.Allocator) void {
         self.left.deinit(allocator);
@@ -618,7 +567,7 @@ const Assignment = struct {
     }
 };
 
-fn parserError(
+pub fn parserError(
     err: ParserError,
     line: usize,
     character: usize,

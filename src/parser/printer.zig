@@ -90,7 +90,7 @@ fn printExpression(expression: *ast.Expression, printer: *PrettyPrinter) std.fs.
         .binary => |binary| {
             try printer.printLine("Binary(", .{});
             printer.indent();
-            try printer.printLine("{s}", .{@tagName(binary.operator)});
+            try printer.printLine("{s}", .{@tagName(binary.operator.operator)});
             try printExpression(binary.left, printer);
             try printExpression(binary.right, printer);
             printer.undent();
@@ -110,7 +110,7 @@ fn printExpression(expression: *ast.Expression, printer: *PrettyPrinter) std.fs.
 fn printFactor(factor: *ast.Factor, printer: *PrettyPrinter) !void {
     switch (factor.*) {
         .unary => |u| {
-            try printer.printLine("{s}(", .{@tagName(u.operator)});
+            try printer.printLine("{s}(", .{@tagName(u.operator.operator)});
             printer.indent();
             try printFactor(u.factor, printer);
             printer.undent();

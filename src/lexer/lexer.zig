@@ -34,6 +34,16 @@ pub const TokenKind = enum {
     less_equal,
     greater_equal,
     equal_sign,
+    compound_plus,
+    compound_hyphen,
+    compound_asterisk,
+    compound_slash,
+    compound_percent,
+    compound_ampersand,
+    compound_pipe,
+    compound_caret,
+    compound_shift_left,
+    compound_shift_right,
 };
 
 const keyword_map = std.StaticStringMap(TokenKind).initComptime(.{
@@ -71,6 +81,16 @@ const symbol_map = std.StaticStringMap(TokenKind).initComptime(.{
     .{ "!=", .not_equal },
     .{ "<=", .less_equal },
     .{ ">=", .greater_equal },
+    .{ "+=", .compound_plus },
+    .{ "*=", .compound_asterisk },
+    .{ "-=", .compound_hyphen },
+    .{ "/=", .compound_slash },
+    .{ "%=", .compound_percent },
+    .{ "&=", .compound_ampersand },
+    .{ "|=", .compound_pipe },
+    .{ "^=", .compound_caret },
+    .{ "<<=", .compound_shift_left },
+    .{ ">>=", .compound_shift_right },
 });
 
 pub const Token = struct {

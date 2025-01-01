@@ -18,11 +18,11 @@ pub fn printInstruction(instruction: tacky.Instruction, writer: std.fs.File.Writ
             try printVal(ret.val, writer);
         },
         .unary => |op| {
-            try writer.print("    {s} = {s} ", .{ op.dst.name, @tagName(op.operator) });
+            try writer.print("    {s} = {s} ", .{ op.dst.name, @tagName(op.operator.operator) });
             try printVal(op.src, writer);
         },
         .binary => |op| {
-            try writer.print("    {s} = {s} ", .{ op.dst.name, @tagName(op.operator) });
+            try writer.print("    {s} = {s} ", .{ op.dst.name, @tagName(op.operator.operator) });
             try printVal(op.src1, writer);
             try writer.writeByte(' ');
             try printVal(op.src2, writer);

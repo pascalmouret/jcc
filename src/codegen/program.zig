@@ -120,19 +120,19 @@ pub const FunctionDefinition = struct {
                     }
                 },
                 .binary => |binary| {
-                    if ((binary.operator == .add or binary.operator == .subtract or binary.operator == .bitwise_and or binary.operator == .bitwise_or or binary.operator == .xor) and (binary.src == .stack and binary.dst == .stack)) {
+                    if ((binary.operator.operator == .add or binary.operator.operator == .subtract or binary.operator.operator == .bitwise_and or binary.operator.operator == .bitwise_or or binary.operator.operator == .xor) and (binary.src == .stack and binary.dst == .stack)) {
                         try list.append(Instruction.mov(binary.src, Operand.register(.r10)));
                         try list.append(Instruction.binary(binary.operator, Operand.register(.r10), binary.dst));
                         continue;
                     }
 
-                    if ((binary.operator == .shift_left or binary.operator == .shift_right) and binary.src != .immediate) {
+                    if ((binary.operator.operator == .shift_left or binary.operator.operator == .shift_right) and binary.src != .immediate) {
                         try list.append(Instruction.mov(binary.src, Operand.sizedRegister(.cx, 1)));
                         try list.append(Instruction.binary(binary.operator, Operand.sizedRegister(.cx, 1), binary.dst));
                         continue;
                     }
 
-                    if (binary.operator == .multiply) {
+                    if (binary.operator.operator == .multiply) {
                         try list.append(Instruction.mov(binary.dst, Operand.register(.r11)));
                         try list.append(Instruction.binary(binary.operator, binary.src, Operand.register(.r11)));
                         try list.append(Instruction.mov(Operand.register(.r11), binary.dst));
