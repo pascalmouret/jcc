@@ -18,7 +18,7 @@ pub fn main() !void {
 
     const s_file = try replaceEnding(allocator, i_file, "s");
     defer allocator.free(s_file);
-    try runCompiler(allocator, i_file, s_file, options.stage, options.print_ast, options.print_tacky);
+    try runCompiler(allocator, i_file, s_file, options.stage, options.print_tokens, options.print_ast, options.print_tacky);
 
     try std.fs.cwd().deleteFile(i_file);
 
@@ -48,6 +48,7 @@ fn runCompiler(
     input_path: []const u8,
     output_path: []const u8,
     stage: Stage,
+    print_tokens: bool,
     print_ast: bool,
     print_tacky: bool,
 ) !void {
@@ -63,6 +64,13 @@ fn runCompiler(
             try flags.appendSlice(" ");
         }
         try flags.appendSlice("--print-tacky");
+    }
+
+    if (print_tokens) {
+        if (flags.items.len > 0) {
+            try flags.appendSlice(" ");
+        }
+        try flags.appendSlice("--print-tokens");
     }
 
     const flags_bfr = try flags.toOwnedSlice();

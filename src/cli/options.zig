@@ -4,6 +4,7 @@ pub const Options = struct {
     input_file: []const u8,
     output_file: ?[]const u8,
     stage: Stage,
+    print_tokens: bool,
     print_ast: bool,
     print_tacky: bool,
     preserve_asm: bool,
@@ -22,6 +23,7 @@ pub fn parseOptions(opts: []const [:0]u8) !Options {
     var file: ?[:0]const u8 = null;
     var stage: Stage = .full;
     var output_file: ?[:0]const u8 = null;
+    var print_tokens = false;
     var print_ast = false;
     var print_tacky = false;
     var preserve_asm = false;
@@ -49,6 +51,8 @@ pub fn parseOptions(opts: []const [:0]u8) !Options {
                 print_ast = true;
             } else if (std.mem.eql(u8, opt, "--print-tacky")) {
                 print_tacky = true;
+            } else if (std.mem.eql(u8, opt, "--print-tokens")) {
+                print_tokens = true;
             } else {
                 stage = std.meta.stringToEnum(Stage, opt[2..]) orelse return error.UnknownArgument;
             }
@@ -62,6 +66,7 @@ pub fn parseOptions(opts: []const [:0]u8) !Options {
             .input_file = path,
             .output_file = output_file,
             .stage = stage,
+            .print_tokens = print_tokens,
             .print_ast = print_ast,
             .print_tacky = print_tacky,
             .preserve_asm = preserve_asm,

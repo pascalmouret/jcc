@@ -29,7 +29,7 @@ pub fn runCompiler(allocator: std.mem.Allocator) !void {
 
     const options = try parseOptions(args);
 
-    const lex_result = try fileToTokens(allocator, options.input_file);
+    const lex_result = try fileToTokens(allocator, options.input_file, options.print_tokens);
 
     if (options.stage == .lex) {
         lex_result.deinit();
@@ -68,14 +68,23 @@ pub fn runCompiler(allocator: std.mem.Allocator) !void {
     try codegen.emitProgram(assembly_program, output_file.writer());
 }
 
-fn fileToTokens(allocator: std.mem.Allocator, path: []const u8) !lex.LexerResult {
+fn fileToTokens(allocator: std.mem.Allocator, path: []const u8, print_tokens: bool) !lex.LexerResult {
     const file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
 
     const bytes = try file.readToEndAlloc(allocator, std.math.maxInt(u32));
     errdefer allocator.free(bytes);
 
-    return try lex.bytesToTokens(allocator, bytes);
+    const result = try lex.bytesToTokens(allocator, bytes);
+
+    if (print_tokens) {
+        const writer = std.io.getStdOut().writer();
+        for (result.tokens) |token| {
+            try writer.print("{s}::{s}\n", .{ @tagName(token.kind), token.bytes });
+        }
+    }
+
+    return result;
 }
 
 fn tokensToAst(allocator: std.mem.Allocator, lex_result: lex.LexerResult, print_ast: bool) !ast.Program {
