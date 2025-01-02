@@ -141,6 +141,7 @@ pub const Function = struct {
     pub fn parse(context: *ParserContext) !Function {
         const int = try context.getA(.int);
         const identifier = try Identifier.parse(context);
+        errdefer identifier.deinit(context.allocator);
         try context.consumeA(.open_parenthesis);
         try context.consumeA(.void);
         try context.consumeA(.close_parenthesis);
@@ -148,6 +149,7 @@ pub const Function = struct {
 
         var list = std.ArrayList(BlockItem).init(context.allocator);
         defer list.deinit();
+        errdefer for (list.items) |item| item.deinit(context.allocator);
 
         var next = try context.peekKind();
         while (next != .close_brace) {
@@ -538,10 +540,12 @@ pub const Declaration = struct {
     pub fn parse(context: *ParserContext) !Declaration {
         const int = try context.getA(.int);
         const identifier = try Identifier.parse(context);
+        errdefer identifier.deinit(context.allocator);
         const next = try context.getOneOf(&.{ .equal_sign, .semicolon });
         switch (next.kind) {
             .equal_sign => {
                 const expression = try Expression.parse(context, 0);
+                errdefer expression.deinit(context.allocator);
                 try context.consumeA(.semicolon);
                 return Declaration{ .identifier = identifier, .expression = expression, .position = Position.extract(int) };
             },
