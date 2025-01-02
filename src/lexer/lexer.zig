@@ -199,17 +199,17 @@ fn parseToken(
             try list.append(createToken(.constant, token, line, character));
         },
         else => {
-            if (symbol_map.get(token)) |kind| {
-                try list.append(createToken(kind, token, line, character));
-            } else {
-                for (0..token.len) |iter| {
-                    const index = token.len - iter;
-                    parseToken(token[0 .. index - 1], list, line, character - iter) catch continue;
-                    parseToken(token[index - 1 .. token.len], list, line, character - index) catch continue;
+            for (0..token.len) |iter| {
+                const index = token.len - iter;
+                if (symbol_map.get(token[0..index])) |kind| {
+                    try list.append(createToken(kind, token[0..index], line, character));
+                    try parseToken(token[index..token.len], list, line, character - index);
                     return;
+                } else {
+                    continue;
                 }
-                return lexerError(LexerError.InvalidToken, line, character, "'{s}' is not a valid token", .{token});
             }
+            return lexerError(LexerError.InvalidToken, line, character, "'{s}' is not a valid token", .{token});
         },
     }
 }

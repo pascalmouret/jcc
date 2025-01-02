@@ -172,8 +172,28 @@ pub const Instruction = union(enum) {
             .unary => |unary| {
                 const src = try Instruction.resolveFactor(context, list, unary.factor);
                 const dst = try Tmp.make(context);
-                try list.append(Instruction{ .unary = Unary{ .operator = unary.operator, .src = src, .dst = dst } });
-                return Val{ .tmp = dst };
+
+                if (unary.operator.operator == .increment or unary.operator.operator == .decrement) {
+                    const operator = if (unary.operator.operator == .increment) ast.Operator.add else ast.Operator.subtract;
+
+                    var postfix_copy: ?Tmp = null;
+                    if (unary.is_postfix) {
+                        postfix_copy = try Tmp.make(context);
+                        try list.append(Instruction{ .copy = Copy{ .src = src, .dst = postfix_copy.? } });
+                    }
+
+                    try list.append(Instruction{ .binary = Binary{ .operator = operator, .src1 = src, .src2 = Val{ .constant = Constant{ .value = 1 } }, .dst = dst } });
+                    try list.append(Instruction{ .copy = Copy{ .src = Val{ .tmp = dst }, .dst = (try Instruction.resolveFactor(context, list, unary.factor)).tmp } });
+
+                    if (unary.is_postfix) {
+                        return Val{ .tmp = postfix_copy.? };
+                    } else {
+                        return Val{ .tmp = dst };
+                    }
+                } else {
+                    try list.append(Instruction{ .unary = Unary{ .operator = unary.operator, .src = src, .dst = dst } });
+                    return Val{ .tmp = dst };
+                }
             },
             .expression => |exp| {
                 return try resolveExpression(context, list, exp);

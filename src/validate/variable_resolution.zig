@@ -147,8 +147,46 @@ fn processFactor(context: *Context, map: *std.StringHashMap([]const u8), factor:
             }
         },
         .constant => |constant| return try ast.Factor.constant(context.allocator, constant.value, constant.position),
-        .unary => |unary| return try ast.Factor.unary(context.allocator, unary.operator, try processFactor(context, map, unary.factor), unary.position),
+        .unary => |unary| {
+            if (unary.operator.operator == .increment or unary.operator.operator == .decrement) {
+                if (!isLValue(unary.factor)) {
+                    return validationError(
+                        ValidationError.InvalidLValue,
+                        unary.position,
+                        "Operand of increment or decrement must be a variable.",
+                        .{},
+                    );
+                }
+            }
+
+            return try ast.Factor.unary(
+                context.allocator,
+                unary.operator,
+                unary.is_postfix,
+                try processFactor(context, map, unary.factor),
+                unary.position,
+            );
+        },
         .expression => |expression| return try ast.Factor.expression(context.allocator, try processExpression(context, map, expression)),
+    }
+}
+
+fn isLValue(input: anytype) bool {
+    switch (@TypeOf(input)) {
+        *ast.Factor => {
+            switch (input.*) {
+                .variable => return true,
+                .expression => |expression| return isLValue(expression),
+                else => return false,
+            }
+        },
+        *ast.Expression => {
+            switch (input.*) {
+                .factor => |factor| return isLValue(factor),
+                else => return false,
+            }
+        },
+        else => unreachable,
     }
 }
 

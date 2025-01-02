@@ -363,22 +363,20 @@ pub const Factor = union(enum) {
     variable: Variable,
     expression: *Expression,
     pub fn parse(context: *ParserContext) (ParserError || error{OutOfMemory})!*Factor {
-        switch (try context.peekKind()) {
-            .constant => {
-                return (Factor{ .constant = try Constant.parse(context) }).toOwned(context.allocator);
-            },
-            .hyphen, .tilde, .exclamation_point => {
-                return (Factor{ .unary = try Unary.parse(context) }).toOwned(context.allocator);
-            },
-            .open_parenthesis => {
+        var result = switch (try context.peekKind()) {
+            .constant => try (Factor{ .constant = try Constant.parse(context) }).toOwned(context.allocator),
+            .hyphen, .tilde, .exclamation_point, .increment, .decrement => try (Factor{ .unary = try Unary.parse(context) }).toOwned(context.allocator),
+            .open_parenthesis => blk: {
                 try context.consumeA(.open_parenthesis);
                 const inner = try Expression.parse(context, 0);
+                errdefer inner.deinit(context.allocator);
                 try context.consumeA(.close_parenthesis);
-                return Factor.expression(context.allocator, inner);
+                break :blk try Factor.expression(context.allocator, inner);
             },
-            .identifier => {
+            .identifier => blk: {
                 const identifier = try Identifier.parse(context);
-                return Factor.variable(context.allocator, identifier, identifier.position);
+                errdefer identifier.deinit(context.allocator);
+                break :blk try Factor.variable(context.allocator, identifier, identifier.position);
             },
             else => {
                 const token = try context.next();
@@ -390,7 +388,21 @@ pub const Factor = union(enum) {
                     .{token.bytes},
                 );
             },
+        };
+        errdefer result.deinit(context.allocator);
+
+        while (context.nextIsOneOf(&.{ .increment, .decrement })) {
+            const operator = try UnaryOperator.parse(context);
+            result = try Factor.unary(
+                context.allocator,
+                operator,
+                true,
+                result,
+                Position.extract(result),
+            );
         }
+
+        return result;
     }
     pub fn constant(allocator: std.mem.Allocator, value: i32, position: Position) !*Factor {
         const result = try allocator.create(Factor);
@@ -400,6 +412,7 @@ pub const Factor = union(enum) {
     pub fn unary(
         allocator: std.mem.Allocator,
         operator: UnaryOperator,
+        is_postfix: bool,
         inner: *Factor,
         position: Position,
     ) !*Factor {
@@ -408,6 +421,7 @@ pub const Factor = union(enum) {
             .unary = Unary{
                 .operator = operator,
                 .factor = inner,
+                .is_postfix = is_postfix,
                 .position = position,
             },
         };
@@ -438,6 +452,7 @@ pub const Factor = union(enum) {
             .unary => return Factor.unary(
                 allocator,
                 self.unary.operator,
+                self.unary.is_postfix,
                 try self.unary.factor.copy(allocator),
                 self.unary.position,
             ),
@@ -502,6 +517,7 @@ const Constant = struct {
 };
 
 const Unary = struct {
+    is_postfix: bool,
     operator: UnaryOperator,
     factor: *Factor,
     position: Position,
@@ -511,6 +527,7 @@ const Unary = struct {
         return Unary{
             .operator = operator,
             .factor = try Factor.parse(context),
+            .is_postfix = false,
             .position = position,
         };
     }

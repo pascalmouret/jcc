@@ -11,6 +11,8 @@ pub const Operator = union(enum) {
     pub const negate = UnaryOperator{ .operator = .negate };
     pub const complement = UnaryOperator{ .operator = .complement };
     pub const logical_not = UnaryOperator{ .operator = .logical_not };
+    pub const increment = UnaryOperator{ .operator = .increment };
+    pub const decrement = UnaryOperator{ .operator = .decrement };
 
     pub const divide = BinaryOperator{ .operator = .divide, .precedence = 50 };
     pub const multiply = BinaryOperator{ .operator = .multiply, .precedence = 50 };
@@ -89,6 +91,8 @@ pub const UnaryOperator = struct {
         negate,
         complement,
         logical_not,
+        increment,
+        decrement,
     },
 
     pub fn parse(context: *ParserContext) !UnaryOperator {
@@ -114,6 +118,8 @@ pub const UnaryOperator = struct {
             .hyphen => Operator.negate,
             .tilde => Operator.complement,
             .exclamation_point => Operator.logical_not,
+            .increment => Operator.increment,
+            .decrement => Operator.decrement,
             else => null,
         };
     }
