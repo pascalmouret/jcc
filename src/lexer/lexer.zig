@@ -11,6 +11,8 @@ pub const TokenKind = enum {
     int,
     void,
     ret,
+    @"if",
+    @"else",
     tilde,
     hyphen,
     decrement,
@@ -44,12 +46,16 @@ pub const TokenKind = enum {
     compound_caret,
     compound_shift_left,
     compound_shift_right,
+    question_mark,
+    colon,
 };
 
 const keyword_map = std.StaticStringMap(TokenKind).initComptime(.{
     .{ "return", .ret },
     .{ "int", .int },
     .{ "void", .void },
+    .{ "if", .@"if" },
+    .{ "else", .@"else" },
 });
 
 const symbol_map = std.StaticStringMap(TokenKind).initComptime(.{
@@ -70,6 +76,8 @@ const symbol_map = std.StaticStringMap(TokenKind).initComptime(.{
     .{ "<", .less },
     .{ ">", .greater },
     .{ "!", .exclamation_point },
+    .{ "?", .question_mark },
+    .{ ":", .colon },
     .{ "=", .equal_sign },
     .{ "--", .decrement },
     .{ "++", .increment },
@@ -143,7 +151,7 @@ pub fn bytesToTokens(allocator: std.mem.Allocator, bytes: []u8) !LexerResult {
                 try parseToken(bytes[token_start..index], &tokens, line, character - (index - token_start));
                 token_start = index + 1;
             },
-            '-', '+', '>', '<', '&', '|', '!', '=', '(', ')', '{', '}', '~', '*', '/', '%', ';', '^' => {
+            '-', '+', '>', '<', '&', '|', '!', '=', '(', ')', '{', '}', '~', '*', '/', '%', ';', '^', '?', ':' => {
                 if (!is_symbol_token) {
                     try parseToken(bytes[token_start..index], &tokens, line, character - (index - token_start));
                     token_start = index;
