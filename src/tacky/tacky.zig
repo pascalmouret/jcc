@@ -96,8 +96,25 @@ pub const Instruction = union(enum) {
                 // we get a destination but we don't need it for standalone expressions
                 _ = try resolveExpression(context, list, exp);
             },
+            .@"if" => |@"if"| {
+                const end_label = try Label.make(context, "if_end", .{});
+                const else_label = if (@"if".@"else") |_| try Label.make(context, "if_else", .{}) else end_label;
+
+                const condition = try Instruction.resolveExpression(context, list, @"if".condition);
+
+                try list.append(Instruction{ .jump = Jump{ .label = else_label.name, .condition = .{ .on = .zero, .val = condition } } });
+
+                try Instruction.resolveStatement(context, list, @"if".then);
+
+                if (@"if".@"else") |@"else"| {
+                    try list.append(Instruction{ .jump = Jump{ .label = end_label.name } });
+                    try list.append(Instruction{ .label = else_label });
+                    try Instruction.resolveStatement(context, list, @"else");
+                }
+
+                try list.append(Instruction{ .label = end_label });
+            },
             .null => {},
-            else => unreachable,
         }
     }
     fn resolveDeclaration(context: *FunctionContext, list: *std.ArrayList(Instruction), declaration: ast.Declaration) !void {
@@ -165,7 +182,27 @@ pub const Instruction = union(enum) {
                 try list.append(Instruction{ .copy = Copy{ .src = value, .dst = destination.tmp } });
                 return destination;
             },
-            else => unreachable,
+            .conditional => |condtional| {
+                const end_label = try Label.make(context, "cond_end", .{});
+                const else_label = try Label.make(context, "cond_else", .{});
+                const result = try Tmp.make(context);
+
+                const condition = try Instruction.resolveExpression(context, list, condtional.condition);
+
+                try list.append(Instruction{ .jump = Jump{ .label = else_label.name, .condition = .{ .on = .zero, .val = condition } } });
+
+                const then_result = try Instruction.resolveExpression(context, list, condtional.then);
+                try list.append(Instruction{ .copy = Copy{ .src = then_result, .dst = result } });
+                try list.append(Instruction{ .jump = Jump{ .label = end_label.name } });
+
+                try list.append(Instruction{ .label = else_label });
+                const else_result = try Instruction.resolveExpression(context, list, condtional.@"else");
+                try list.append(Instruction{ .copy = Copy{ .src = else_result, .dst = result } });
+
+                try list.append(Instruction{ .label = end_label });
+
+                return Val{ .tmp = result };
+            },
         }
     }
     fn resolveFactor(context: *FunctionContext, list: *std.ArrayList(Instruction), factor: *ast.Factor) error{OutOfMemory}!Val {
