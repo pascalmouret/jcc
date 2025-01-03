@@ -13,7 +13,7 @@ pub fn printFunctionDefinition(function_definition: tacky.FunctionDefinition, wr
 
 pub fn printInstruction(instruction: tacky.Instruction, writer: std.fs.File.Writer) !void {
     switch (instruction) {
-        .ret => |ret| {
+        .@"return" => |ret| {
             try writer.writeAll("    return ");
             try printVal(ret.val, writer);
         },

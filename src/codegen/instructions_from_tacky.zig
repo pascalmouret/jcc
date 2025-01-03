@@ -42,7 +42,7 @@ pub fn fromTacky(program_context: *ProgramContext, instructions: []tacky.Instruc
 
 fn appendInstruction(context: *FunctionContext, instruction: tacky.Instruction) !void {
     switch (instruction) {
-        .ret => |r| try appendRet(context, r),
+        .@"return" => |r| try appendReturn(context, r),
         .unary => |u| try appendUnary(context, u),
         .binary => |b| try appendBinary(context, b),
         .jump => |j| try appendJump(context, j),
@@ -59,7 +59,7 @@ fn appendLabel(context: *FunctionContext, label: tacky.Label) !void {
     try context.list.append(Instruction.label(try context.program_context.getIdentifier(label.name)));
 }
 
-fn appendRet(context: *FunctionContext, ret: tacky.Ret) !void {
+fn appendReturn(context: *FunctionContext, ret: tacky.Return) !void {
     try context.list.append(Instruction.mov(try context.operandFromVal(ret.val), Operand.register(.ax)));
     try context.list.append(Instruction.ret());
 }

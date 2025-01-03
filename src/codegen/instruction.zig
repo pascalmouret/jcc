@@ -10,7 +10,7 @@ pub const fromTacky = @import("./instructions_from_tacky.zig").fromTacky;
 
 pub const Instruction = union(enum) {
     mov: Mov,
-    ret: Ret,
+    @"return": Return,
     unary: Unary,
     binary: Binary,
     idiv: Idiv,
@@ -24,7 +24,7 @@ pub const Instruction = union(enum) {
         return Instruction{ .mov = Mov{ .src = src, .dst = dst } };
     }
     pub fn ret() Instruction {
-        return Instruction{ .ret = Ret{} };
+        return Instruction{ .@"return" = Return{} };
     }
     pub fn unary(operator: ast.UnaryOperator, operand: Operand) Instruction {
         return Instruction{ .unary = Unary{ .operator = operator, .operand = operand } };
@@ -55,7 +55,7 @@ pub const Instruction = union(enum) {
     }
 };
 
-const Ret = struct {};
+const Return = struct {};
 
 const Mov = struct {
     src: Operand,

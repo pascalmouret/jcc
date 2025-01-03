@@ -58,7 +58,7 @@ pub const FunctionDefinition = struct {
         }
 
         // make sure we return 0 if no return happened before
-        try list.append(Instruction{ .ret = Ret{ .val = Val{ .constant = Constant{ .value = 0 } } } });
+        try list.append(Instruction{ .@"return" = Return{ .val = Val{ .constant = Constant{ .value = 0 } } } });
 
         return FunctionDefinition{
             .name = try allocator.dupe(u8, function.name.name),
@@ -75,7 +75,7 @@ pub const FunctionDefinition = struct {
 
 pub const Instruction = union(enum) {
     unary: Unary,
-    ret: Ret,
+    @"return": Return,
     binary: Binary,
     copy: Copy,
     jump: Jump,
@@ -88,9 +88,9 @@ pub const Instruction = union(enum) {
     }
     fn resolveStatement(context: *FunctionContext, list: *std.ArrayList(Instruction), statement: ast.Statement) !void {
         switch (statement) {
-            .ret => |s| {
+            .@"return" => |s| {
                 const dst = try resolveExpression(context, list, s.expression);
-                try list.append(Instruction{ .ret = Ret{ .val = dst } });
+                try list.append(Instruction{ .@"return" = Return{ .val = dst } });
             },
             .expression => |exp| {
                 // we get a destination but we don't need it for standalone expressions
@@ -205,7 +205,7 @@ pub const Instruction = union(enum) {
     }
 };
 
-pub const Ret = struct {
+pub const Return = struct {
     val: Val,
 };
 

@@ -90,7 +90,7 @@ const PrettyEmitter = struct {
                     try self.printInstruction("movl", .{ mov.src, mov.dst });
                 }
             },
-            .ret => {
+            .@"return" => {
                 try self.printInstruction("movq", .{ Operand.register(.rbp), Operand.register(.rsp) });
                 try self.printInstruction("popq", .{Operand.register(.rbp)});
                 try self.printInstruction("ret", .{});

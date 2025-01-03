@@ -86,8 +86,8 @@ fn processBlockItem(context: *Context, map: *std.StringHashMap([]const u8), bloc
 fn processStatement(context: *Context, map: *std.StringHashMap([]const u8), statement: ast.Statement) !ast.Statement {
     switch (statement) {
         .null => return ast.Statement{ .null = .{} },
-        .ret => |ret| return ast.Statement{
-            .ret = ast.Ret{
+        .@"return" => |ret| return ast.Statement{
+            .@"return" = ast.Return{
                 .expression = try processExpression(context, map, ret.expression),
                 .position = ret.position,
             },

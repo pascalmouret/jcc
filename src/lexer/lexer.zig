@@ -10,7 +10,7 @@ pub const TokenKind = enum {
     semicolon,
     int,
     void,
-    ret,
+    @"return",
     @"if",
     @"else",
     tilde,
@@ -51,7 +51,7 @@ pub const TokenKind = enum {
 };
 
 const keyword_map = std.StaticStringMap(TokenKind).initComptime(.{
-    .{ "return", .ret },
+    .{ "return", .@"return" },
     .{ "int", .int },
     .{ "void", .void },
     .{ "if", .@"if" },

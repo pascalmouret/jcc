@@ -73,7 +73,7 @@ fn printStatement(statement: ast.Statement, printer: *PrettyPrinter) !void {
     printer.indent();
 
     switch (statement) {
-        .ret => |ret| {
+        .@"return" => |ret| {
             try printExpression(ret.expression, printer);
         },
         .expression => |exp| try printExpression(exp, printer),

@@ -209,12 +209,12 @@ pub const BlockItem = union(enum) {
 };
 
 pub const Statement = union(enum) {
-    ret: Ret,
+    @"return": Return,
     expression: *Expression,
     null: Null,
     pub fn parse(context: *ParserContext) !Statement {
         switch (try context.peekKind()) {
-            .ret => return Statement{ .ret = try Ret.parse(context) },
+            .@"return" => return Statement{ .@"return" = try Return.parse(context) },
             .semicolon => {
                 try context.consumeA(.semicolon);
                 return Statement{ .null = .{} };
@@ -228,7 +228,7 @@ pub const Statement = union(enum) {
     }
     pub fn deinit(self: Statement, allocator: std.mem.Allocator) void {
         switch (self) {
-            .ret => self.ret.deinit(allocator),
+            .@"return" => self.@"return".deinit(allocator),
             .expression => self.expression.deinit(allocator),
             .null => {},
         }
@@ -237,19 +237,19 @@ pub const Statement = union(enum) {
 
 const Null = struct {};
 
-pub const Ret = struct {
+pub const Return = struct {
     expression: *Expression,
     position: Position,
-    pub fn parse(context: *ParserContext) !Ret {
-        const ret = try context.getA(.ret);
+    pub fn parse(context: *ParserContext) !Return {
+        const ret = try context.getA(.@"return");
         const expression = try Expression.parse(context, 0);
         try context.consumeA(.semicolon);
-        return Ret{
+        return Return{
             .expression = expression,
             .position = Position.extract(ret),
         };
     }
-    pub fn deinit(self: Ret, allocator: std.mem.Allocator) void {
+    pub fn deinit(self: Return, allocator: std.mem.Allocator) void {
         self.expression.deinit(allocator);
     }
 };
