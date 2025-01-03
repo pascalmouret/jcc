@@ -192,7 +192,7 @@ pub const Identifier = struct {
 };
 
 pub const BlockItem = union(enum) {
-    statement: Statement,
+    statement: *Statement,
     declaration: Declaration,
     pub fn parse(context: *ParserContext) !BlockItem {
         switch (try context.peekKind()) {
@@ -209,29 +209,78 @@ pub const BlockItem = union(enum) {
 };
 
 pub const Statement = union(enum) {
+    @"if": If,
     @"return": Return,
     expression: *Expression,
     null: Null,
-    pub fn parse(context: *ParserContext) !Statement {
+    pub fn parse(context: *ParserContext) (ParserError || error{OutOfMemory})!*Statement {
         switch (try context.peekKind()) {
-            .@"return" => return Statement{ .@"return" = try Return.parse(context) },
+            .@"if" => return try If.parse(context),
+            .@"return" => return try Return.parse(context),
             .semicolon => {
                 try context.consumeA(.semicolon);
-                return Statement{ .null = .{} };
+                return Statement.null(context.allocator);
             },
             else => {
-                const expression = Statement{ .expression = try Expression.parse(context, 0) };
+                const exp = try Expression.parse(context, 0);
                 try context.consumeA(.semicolon);
-                return expression;
+                return Statement.expression(context.allocator, exp);
             },
         }
     }
-    pub fn deinit(self: Statement, allocator: std.mem.Allocator) void {
-        switch (self) {
+    pub fn @"if"(
+        allocator: std.mem.Allocator,
+        condition: *Expression,
+        then: *Statement,
+        @"else": ?*Statement,
+        position: Position,
+    ) !*Statement {
+        const result = try allocator.create(Statement);
+        result.* = Statement{
+            .@"if" = If{
+                .condition = condition,
+                .then = then,
+                .@"else" = @"else",
+                .position = position,
+            },
+        };
+        return result;
+    }
+    pub fn @"return"(
+        allocator: std.mem.Allocator,
+        exp: *Expression,
+        position: Position,
+    ) !*Statement {
+        const result = try allocator.create(Statement);
+        result.* = Statement{
+            .@"return" = Return{
+                .expression = exp,
+                .position = position,
+            },
+        };
+        return result;
+    }
+    pub fn expression(
+        allocator: std.mem.Allocator,
+        inner: *Expression,
+    ) !*Statement {
+        const result = try allocator.create(Statement);
+        result.* = Statement{ .expression = inner };
+        return result;
+    }
+    pub fn @"null"(allocator: std.mem.Allocator) !*Statement {
+        const result = try allocator.create(Statement);
+        result.* = Statement{ .null = Null{} };
+        return result;
+    }
+    pub fn deinit(self: *Statement, allocator: std.mem.Allocator) void {
+        switch (self.*) {
+            .@"if" => self.@"if".deinit(allocator),
             .@"return" => self.@"return".deinit(allocator),
             .expression => self.expression.deinit(allocator),
             .null => {},
         }
+        allocator.destroy(self);
     }
 };
 
@@ -240,22 +289,55 @@ const Null = struct {};
 pub const Return = struct {
     expression: *Expression,
     position: Position,
-    pub fn parse(context: *ParserContext) !Return {
+    pub fn parse(context: *ParserContext) !*Statement {
         const ret = try context.getA(.@"return");
         const expression = try Expression.parse(context, 0);
         try context.consumeA(.semicolon);
-        return Return{
-            .expression = expression,
-            .position = Position.extract(ret),
-        };
+        return Statement.@"return"(context.allocator, expression, Position.extract(ret));
     }
     pub fn deinit(self: Return, allocator: std.mem.Allocator) void {
         self.expression.deinit(allocator);
     }
 };
 
+pub const If = struct {
+    condition: *Expression,
+    then: *Statement,
+    @"else": ?*Statement,
+    position: Position,
+
+    pub fn parse(context: *ParserContext) !*Statement {
+        const start = try context.getA(.@"if");
+        try context.consumeA(.open_parenthesis);
+
+        const condition = try Expression.parse(context, 0);
+        errdefer condition.deinit(context.allocator);
+
+        try context.consumeA(.close_parenthesis);
+
+        const then = try Statement.parse(context);
+        errdefer then.deinit(context.allocator);
+
+        if (try context.peekKind() == .@"else") {
+            try context.consumeA(.@"else");
+            const els = try Statement.parse(context);
+            return Statement.@"if"(context.allocator, condition, then, els, Position.extract(start));
+        } else {
+            return Statement.@"if"(context.allocator, condition, then, null, Position.extract(start));
+        }
+    }
+    pub fn deinit(self: If, allocator: std.mem.Allocator) void {
+        self.condition.deinit(allocator);
+        self.then.deinit(allocator);
+        if (self.@"else") |els| {
+            els.deinit(allocator);
+        }
+    }
+};
+
 pub const Expression = union(enum) {
     binary: Binary,
+    conditional: Conditional,
     assignment: Assignment,
     factor: *Factor,
     pub fn parse(context: *ParserContext, min_precedence: usize) (ParserError || error{OutOfMemory})!*Expression {
@@ -278,8 +360,15 @@ pub const Expression = union(enum) {
                     left = try Expression.assignment(context.allocator, left, right, Position.extract(left));
                 },
                 .binary => |op| {
-                    const right = try Expression.parse(context, op.precedence + 1);
-                    left = try Expression.binary(context.allocator, op, left, right, Position.extract(left));
+                    if (op.operator == .conditional) {
+                        const then = try Expression.parse(context, 0);
+                        try context.consumeA(.colon);
+                        const els = try Expression.parse(context, op.precedence);
+                        left = try Expression.conditional(context.allocator, left, then, els, Position.extract(left));
+                    } else {
+                        const right = try Expression.parse(context, op.precedence + 1);
+                        left = try Expression.binary(context.allocator, op, left, right, Position.extract(left));
+                    }
                 },
                 .unary => unreachable,
             }
@@ -300,6 +389,24 @@ pub const Expression = union(enum) {
                 .operator = operator,
                 .left = left,
                 .right = right,
+                .position = position,
+            },
+        };
+        return result;
+    }
+    pub fn conditional(
+        alloocator: std.mem.Allocator,
+        condition: *Expression,
+        then: *Expression,
+        @"else": *Expression,
+        position: Position,
+    ) !*Expression {
+        const result = try alloocator.create(Expression);
+        result.* = Expression{
+            .conditional = Conditional{
+                .condition = condition,
+                .then = then,
+                .@"else" = @"else",
                 .position = position,
             },
         };
@@ -335,6 +442,13 @@ pub const Expression = union(enum) {
                 try self.binary.right.copy(allocator),
                 self.binary.position,
             ),
+            .conditional => return Expression.conditional(
+                allocator,
+                try self.conditional.condition.copy(allocator),
+                try self.conditional.then.copy(allocator),
+                try self.conditional.@"else".copy(allocator),
+                self.conditional.position,
+            ),
             .factor => return Expression.factor(
                 allocator,
                 try self.factor.copy(allocator),
@@ -350,6 +464,7 @@ pub const Expression = union(enum) {
     pub fn deinit(self: *Expression, allocator: std.mem.Allocator) void {
         switch (self.*) {
             .binary => self.binary.deinit(allocator),
+            .conditional => self.conditional.deinit(allocator),
             .factor => self.factor.deinit(allocator),
             .assignment => self.assignment.deinit(allocator),
         }
@@ -480,6 +595,18 @@ pub const Factor = union(enum) {
             else => {},
         }
         allocator.destroy(self);
+    }
+};
+
+const Conditional = struct {
+    condition: *Expression,
+    then: *Expression,
+    @"else": *Expression,
+    position: Position,
+    pub fn deinit(self: Conditional, allocator: std.mem.Allocator) void {
+        self.condition.deinit(allocator);
+        self.then.deinit(allocator);
+        self.@"else".deinit(allocator);
     }
 };
 

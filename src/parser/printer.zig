@@ -68,11 +68,16 @@ fn printDeclaration(declaration: ast.Declaration, printer: *PrettyPrinter) !void
     try printer.printLine(")", .{});
 }
 
-fn printStatement(statement: ast.Statement, printer: *PrettyPrinter) !void {
-    try printer.printLine("{s}(", .{@tagName(statement)});
+fn printStatement(statement: *ast.Statement, printer: *PrettyPrinter) !void {
+    try printer.printLine("{s}(", .{@tagName(statement.*)});
     printer.indent();
 
-    switch (statement) {
+    switch (statement.*) {
+        .@"if" => |@"if"| {
+            try printExpression(@"if".condition, printer);
+            try printStatement(@"if".then, printer);
+            if (@"if".@"else" != null) try printStatement(@"if".@"else".?, printer);
+        },
         .@"return" => |ret| {
             try printExpression(ret.expression, printer);
         },
@@ -101,6 +106,15 @@ fn printExpression(expression: *ast.Expression, printer: *PrettyPrinter) std.fs.
             printer.indent();
             try printExpression(assignment.left, printer);
             try printExpression(assignment.right, printer);
+            printer.undent();
+            try printer.printLine(")", .{});
+        },
+        .conditional => |conditional| {
+            try printer.printLine("Conditional(", .{});
+            printer.indent();
+            try printExpression(conditional.condition, printer);
+            try printExpression(conditional.then, printer);
+            try printExpression(conditional.@"else", printer);
             printer.undent();
             try printer.printLine(")", .{});
         },

@@ -14,24 +14,25 @@ pub const Operator = union(enum) {
     pub const increment = UnaryOperator{ .operator = .increment };
     pub const decrement = UnaryOperator{ .operator = .decrement };
 
-    pub const divide = BinaryOperator{ .operator = .divide, .precedence = 50 };
-    pub const multiply = BinaryOperator{ .operator = .multiply, .precedence = 50 };
-    pub const modulo = BinaryOperator{ .operator = .modulo, .precedence = 50 };
-    pub const add = BinaryOperator{ .operator = .add, .precedence = 45 };
-    pub const subtract = BinaryOperator{ .operator = .subtract, .precedence = 45 };
-    pub const shift_left = BinaryOperator{ .operator = .shift_left, .precedence = 40 };
-    pub const shift_right = BinaryOperator{ .operator = .shift_right, .precedence = 40 };
-    pub const less_than = BinaryOperator{ .operator = .less_than, .precedence = 35 };
-    pub const less_than_equal = BinaryOperator{ .operator = .less_than_equal, .precedence = 35 };
-    pub const greater_than = BinaryOperator{ .operator = .greater_than, .precedence = 35 };
-    pub const greater_than_equal = BinaryOperator{ .operator = .greater_than_equal, .precedence = 35 };
-    pub const equal = BinaryOperator{ .operator = .equal, .precedence = 30 };
-    pub const not_equal = BinaryOperator{ .operator = .not_equal, .precedence = 30 };
-    pub const bitwise_and = BinaryOperator{ .operator = .bitwise_and, .precedence = 25 };
-    pub const xor = BinaryOperator{ .operator = .xor, .precedence = 20 };
-    pub const bitwise_or = BinaryOperator{ .operator = .bitwise_or, .precedence = 15 };
-    pub const logical_and = BinaryOperator{ .operator = .logical_and, .precedence = 10 };
-    pub const logical_or = BinaryOperator{ .operator = .logical_or, .precedence = 10 };
+    pub const divide = BinaryOperator{ .operator = .divide, .precedence = 55 };
+    pub const multiply = BinaryOperator{ .operator = .multiply, .precedence = 55 };
+    pub const modulo = BinaryOperator{ .operator = .modulo, .precedence = 55 };
+    pub const add = BinaryOperator{ .operator = .add, .precedence = 50 };
+    pub const subtract = BinaryOperator{ .operator = .subtract, .precedence = 50 };
+    pub const shift_left = BinaryOperator{ .operator = .shift_left, .precedence = 45 };
+    pub const shift_right = BinaryOperator{ .operator = .shift_right, .precedence = 45 };
+    pub const less_than = BinaryOperator{ .operator = .less_than, .precedence = 40 };
+    pub const less_than_equal = BinaryOperator{ .operator = .less_than_equal, .precedence = 40 };
+    pub const greater_than = BinaryOperator{ .operator = .greater_than, .precedence = 40 };
+    pub const greater_than_equal = BinaryOperator{ .operator = .greater_than_equal, .precedence = 40 };
+    pub const equal = BinaryOperator{ .operator = .equal, .precedence = 35 };
+    pub const not_equal = BinaryOperator{ .operator = .not_equal, .precedence = 35 };
+    pub const bitwise_and = BinaryOperator{ .operator = .bitwise_and, .precedence = 30 };
+    pub const xor = BinaryOperator{ .operator = .xor, .precedence = 25 };
+    pub const bitwise_or = BinaryOperator{ .operator = .bitwise_or, .precedence = 20 };
+    pub const logical_and = BinaryOperator{ .operator = .logical_and, .precedence = 15 };
+    pub const logical_or = BinaryOperator{ .operator = .logical_or, .precedence = 15 };
+    pub const conditional = BinaryOperator{ .operator = .conditional, .precedence = 10 };
 
     pub const assign = AssignmentOperator{ .operator = .assign, .binary_operator = null };
     pub const assign_add = AssignmentOperator{ .operator = .assign_add, .binary_operator = Operator.add };
@@ -147,6 +148,7 @@ pub const BinaryOperator = struct {
         not_equal,
         logical_and,
         logical_or,
+        conditional,
     },
 
     pub fn parse(context: *ParserContext) !BinaryOperator {
@@ -187,6 +189,7 @@ pub const BinaryOperator = struct {
             .not_equal => Operator.not_equal,
             .logical_and => Operator.logical_and,
             .logical_or => Operator.logical_or,
+            .question_mark => Operator.conditional,
             else => null,
         };
     }

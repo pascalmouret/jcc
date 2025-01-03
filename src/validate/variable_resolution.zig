@@ -83,18 +83,25 @@ fn processBlockItem(context: *Context, map: *std.StringHashMap([]const u8), bloc
     }
 }
 
-fn processStatement(context: *Context, map: *std.StringHashMap([]const u8), statement: ast.Statement) !ast.Statement {
-    switch (statement) {
-        .null => return ast.Statement{ .null = .{} },
-        .@"return" => |ret| return ast.Statement{
-            .@"return" = ast.Return{
-                .expression = try processExpression(context, map, ret.expression),
-                .position = ret.position,
-            },
-        },
-        .expression => |expression| return ast.Statement{
-            .expression = try processExpression(context, map, expression),
-        },
+fn processStatement(context: *Context, map: *std.StringHashMap([]const u8), statement: *ast.Statement) !*ast.Statement {
+    switch (statement.*) {
+        .null => return ast.Statement.null(context.allocator),
+        .@"return" => |ret| return ast.Statement.@"return"(
+            context.allocator,
+            try processExpression(context, map, ret.expression),
+            ret.position,
+        ),
+        .expression => |expression| return ast.Statement.expression(
+            context.allocator,
+            try processExpression(context, map, expression),
+        ),
+        .@"if" => |@"if"| return ast.Statement.@"if"(
+            context.allocator,
+            try processExpression(context, map, @"if".condition),
+            try processStatement(context, map, @"if".then),
+            if (@"if".@"else") |@"else"| try processStatement(context, map, @"else") else null,
+            @"if".position,
+        ),
     }
 }
 
@@ -127,6 +134,13 @@ fn processExpression(context: *Context, map: *std.StringHashMap([]const u8), exp
             );
         },
         .factor => |factor| return ast.Expression.factor(context.allocator, try processFactor(context, map, factor)),
+        .conditional => |conditional| return ast.Expression.conditional(
+            context.allocator,
+            try processExpression(context, map, conditional.condition),
+            try processExpression(context, map, conditional.then),
+            try processExpression(context, map, conditional.@"else"),
+            conditional.position,
+        ),
     }
 }
 

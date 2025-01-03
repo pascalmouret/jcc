@@ -86,8 +86,8 @@ pub const Instruction = union(enum) {
             .declaration => return Instruction.resolveDeclaration(context, list, item.declaration),
         }
     }
-    fn resolveStatement(context: *FunctionContext, list: *std.ArrayList(Instruction), statement: ast.Statement) !void {
-        switch (statement) {
+    fn resolveStatement(context: *FunctionContext, list: *std.ArrayList(Instruction), statement: *ast.Statement) !void {
+        switch (statement.*) {
             .@"return" => |s| {
                 const dst = try resolveExpression(context, list, s.expression);
                 try list.append(Instruction{ .@"return" = Return{ .val = dst } });
@@ -97,6 +97,7 @@ pub const Instruction = union(enum) {
                 _ = try resolveExpression(context, list, exp);
             },
             .null => {},
+            else => unreachable,
         }
     }
     fn resolveDeclaration(context: *FunctionContext, list: *std.ArrayList(Instruction), declaration: ast.Declaration) !void {
@@ -164,6 +165,7 @@ pub const Instruction = union(enum) {
                 try list.append(Instruction{ .copy = Copy{ .src = value, .dst = destination.tmp } });
                 return destination;
             },
+            else => unreachable,
         }
     }
     fn resolveFactor(context: *FunctionContext, list: *std.ArrayList(Instruction), factor: *ast.Factor) error{OutOfMemory}!Val {
